@@ -17,6 +17,29 @@
 
 (defvar scripture-package-parameter-rules '(:straight replace :after merge))
 
+(defun scripture-file-properties (file)
+  "Return all properties from an org FILE."
+  (with-temp-buffer
+    (insert-file-contents file)
+    (org-mode)
+    (let (properties)
+      (goto-char (point-min))
+      (while (re-search-forward
+"^\\(?:;;[ \t]*\\)?#\\+\\(\\w+\\):[ \t]*\\(.*\\)$"
+nil t)
+        (let ((key (intern (downcase (match-string 1))))
+              (value (match-string 2)))
+          (push (cons key value) properties)))
+      properties)))
+
+(defun scripture-file-priority (file)
+  "Return the priority of an org FILE.
+If no priority is set, return 10."
+  (let ((priority (alist-get 'priority (scripture-file-properties file) "10")))
+    (if (string-match-p "^[0-9]+$" priority)
+        (string-to-number priority)
+      10)))
+
 (defun scripture-get-use-package-package (params)
   "Return the package name and parameter of a `use-package' call.
 Specified in the org babel header arguments PARAMS."
@@ -134,35 +157,73 @@ The output Elisp file is stored in `scripture-output-directory'."
              (source (scripture-execute-org-src-blocks-and-capture-results file))
              (output (concat source "\n" (scripture-build-packages))))
 	(with-temp-file output-file
+          (message "FILE %s %s" file (scripture-file-properties file))
+          (dolist (property (scripture-file-properties file))
+            (insert (format ";; #+%s: %s\n\n"
+                            (upcase (symbol-name (car property)))
+                            (cdr property))))
           (insert output)))
       (when (file-exists-p output-file)
-        (set-file-times output-file))
-      (byte-compile-file output-file))))
+        (set-file-times output-file)))))
+
+(defun scripture-get-files (extension directory)
+  (let* ((files (directory-files-recursively directory extension)))
+    (sort files (lambda (a b) (< (scripture-file-priority a)
+                                 (scripture-file-priority b))))))
 
 (defun scripture-compile-directory (&optional directory)
   "Compile all Org files in DIRECTORY to Elisp.
 If DIRECTORY is nil, use `scripture-org-directory'."
-  (let ((files (directory-files-recursively (or scripture-org-directory directory) "\\.org$")))
-    (dolist (file files)
-      (scripture-compile-file file))))
+  (dolist (file (scripture-get-files "\\.org$" (or scripture-org-directory directory)))
+    (scripture-compile-file file)))
+
+(defun scripture-parse-file (file)
+  "Parse FILE and return a list of its top-level forms along with line numbers."
+  (with-temp-buffer
+    (insert-file-contents file)
+    (goto-char (point-min))
+    (let ((forms '())
+          (line-number 1))
+      (while (not (eobp))
+        (let ((form (ignore-errors (read (current-buffer)))))
+          (when form
+            (push (cons line-number form) forms)))
+        (setq line-number (line-number-at-pos (point))))
+      (nreverse forms))))
 
 (defun scripture-load-directory (&optional directory)
   "Load all Elisp files in DIRECTORY.
 If DIRECTORY is nil, use `scripture-output-directory'."
-  (let ((files (directory-files-recursively (or scripture-output-directory directory) "\\.elc$")))
-    (dolist (file files)
-      (load-file file))))
+  (dolist (file (scripture-get-files "\\.el$" (or scripture-output-directory directory)))
+    (let ((parsed (scripture-parse-file file)))
+      (dolist (form parsed)
+        (condition-case err
+            (progn
+              (message "Scripture: Loading %s" file)
+              (eval (cdr form)))
+          (error 
+           (progn
+             (display-warning 'scripture (format "Error loading file: [%s] %s - %s"
+                                                 (car form)
+	                                         file
+                                                 (error-message-string err)) :error)
+             (beep))))))))
 
-(defmacro scripture-bootstrap (&optional compile-and-load)
+(defmacro scripture-bootstrap (&rest opts)
   "Bootstrap straight.el and `use-package'.
 This macro should be called at the beginning of the init file.
 If COMPILE-AND-LOAD is non-nil, compile and load the Elisp files."
-  `(progn
+  `(let ((compile-and-load (plist-get (quote ,opts) :compile-and-load))
+         (user-org-directory (plist-get (quote ,opts) :org-directory)))
+     (when user-org-directory
+       (setq scripture-org-directory (eval user-org-directory)))
+     (setq straight-repository-branch "develop")
+     (setq gc-cons-threshold (* 1024 1024 100))
      (defvar bootstrap-version)
      (setq package-enable-at-startup nil)
      (let ((bootstrap-file
             (expand-file-name
-             "~/.emacs.d/straight/repos/straight.el/bootstrap.el"
+             "straight/repos/straight.el/bootstrap.el"
              (or (bound-and-true-p straight-base-dir)
                  user-emacs-directory)))
            (bootstrap-version 7))
@@ -176,9 +237,12 @@ If COMPILE-AND-LOAD is non-nil, compile and load the Elisp files."
        (load bootstrap-file nil 'nomessage)
        (straight-use-package 'use-package)
        (straight-use-package 'org)
-       (when ,compile-and-load
+       (require 'bind-key)
+       (when compile-and-load
          (scripture-compile-directory)
-         (scripture-load-directory)))))
+         (scripture-load-directory))
+       (setq gc-cons-threshold 800000)
+       :done)))
 
 (provide 'scripture)
 
