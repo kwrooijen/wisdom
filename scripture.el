@@ -15,7 +15,7 @@
   :type 'string
   :group 'scripture)
 
-(defvar scripture-package-parameter-rules '(:straight replace :after merge))
+(defvar scripture-package-parameter-rules '(:straight replace :after replace))
 
 (defun scripture-file-properties (file)
   "Return all properties from an org FILE."
