@@ -50,18 +50,36 @@ Specified in the org babel header arguments PARAMS."
                params)))
     (split-string (car filtered) "/")))
 
-(defun scripture-build-package (package-name)
+(defun scripture-wrap-in-conditional (file part)
+  "Wrap PART in a condition-case form.
+FILE is the file name of the Org file."
+  (let ((body (plist-get part :body))
+        (line (plist-get part :line)))
+    (prin1-to-string
+     `(condition-case err
+          ,(read body)
+        (error
+         (progn
+           (display-warning
+            'scripture
+            (format "Error loading %s:%s - %s"
+                    ,(format "%s" file)
+                    ,line
+                    (error-message-string err)))
+           (beep)))))))
+
+(defun scripture-build-package (file package-name)
   "Build a `use-package' call for PACKAGE-NAME in string format."
   (when-let ((package (plist-get scripture-packages package-name)))
     (concat (format "(use-package %s\n" (symbol-name package-name))
-            (let ((straight (or (plist-get package :straight) "t")))
-	      (format ":straight %s\n" straight))
-            (when-let ((after (plist-get package :after)))
+            (let ((straight (or (plist-get (plist-get package :straight) :body) "t")))
+              (format ":straight %s\n" straight))
+            (when-let ((after (plist-get (plist-get package :after) :body)))
               (format ":after %s\n" after))
             (when-let ((init (plist-get package :init)))
-              (format ":init %s\n" (string-join init)))
+              (format ":init %s\n" (string-join (mapcar (lambda (x) (scripture-wrap-in-conditional file x)) init))))
             (when-let ((config (plist-get package :config)))
-              (format ":config %s\n" (string-join config)))
+              (format ":config %s\n" (string-join (mapcar (lambda (x) (scripture-wrap-in-conditional file x)) config))))
             ")")))
 
 (defun scripture-plist-keys (plist)
@@ -72,20 +90,22 @@ Specified in the org babel header arguments PARAMS."
       (setq plist (cddr plist)))
     (nreverse keys)))
 
-(defun scripture-build-packages ()
+(defun scripture-build-packages (file)
   "Build a string of `use-package' statements.
 The resulting contains all all packages in `scripture-packages'."
   (let ((package-names (scripture-plist-keys scripture-packages))
         (result ""))
     (dolist (package-name package-names)
-      (setq result (concat result (scripture-build-package package-name))))
+      (setq result (concat result (scripture-build-package file package-name))))
     result))
 
-(defun scripture-add-package (package body)
+(defun scripture-add-package (package body element)
   "Execute a block of Use-Package code with org-babel.
 PACKAGE is a list of the package name and parameter.
 BODY is the body of the source block."
-  (let* ((package-name (intern (car package)))
+  (let* ((begin (org-element-property :begin (org-element-context)))
+         (line (line-number-at-pos begin))
+         (package-name (intern (car package)))
          (package-parameter (intern (concat ":" (car (cdr package)))))
          (previous-body (plist-get (plist-get scripture-packages package-name) package-parameter))
          (parameter-rule (plist-get scripture-package-parameter-rules package-parameter))
@@ -93,19 +113,19 @@ BODY is the body of the source block."
           (cond
            ((equal 'replace parameter-rule)
             (plist-put (plist-get scripture-packages package-name)
-                       package-parameter body))
-
+                       package-parameter
+                       `(:body ,body :line ,line)))
            ((equal 'merge parameter-rule)
             ;; TODO
             (plist-put (plist-get scripture-packages package-name)
                        package-parameter
-                       (cl-remove-duplicates (append previous-body (list body))
-                                             :test 'string-equal)))
+                       (append previous-body
+                               `((:body ,body :line ,line)))))
            (t
             (plist-put (plist-get scripture-packages package-name)
                        package-parameter
-                       (cl-remove-duplicates (append previous-body (list body))
-                                             :test 'string-equal))))))
+                       (append previous-body
+                               `((:body ,body :line ,line))))))))
     (setq scripture-packages
           (plist-put scripture-packages package-name new-package-parameter))
     nil))
@@ -122,7 +142,7 @@ BODY is the body of the source block."
               (parameters (split-string (or (org-element-property :parameters (org-element-context)) "") " ")))
           (when (string= language "emacs-lisp")
             (if-let ((package (scripture-get-use-package-package parameters)))
-                (scripture-add-package package body)
+                (scripture-add-package package body (org-element-context))
               (when (stringp body)
                 (push body results))))))
       (mapconcat 'identity (reverse results) "\n"))))
@@ -155,9 +175,8 @@ The output Elisp file is stored in `scripture-output-directory'."
     (when (file-newer-than-file-p file output-file)
       (let* ((scripture-packages nil)
              (source (scripture-execute-org-src-blocks-and-capture-results file))
-             (output (concat source "\n" (scripture-build-packages))))
-	(with-temp-file output-file
-          (message "FILE %s %s" file (scripture-file-properties file))
+             (output (concat source "\n" (scripture-build-packages file))))
+        (with-temp-file output-file
           (dolist (property (scripture-file-properties file))
             (insert (format ";; #+%s: %s\n\n"
                             (upcase (symbol-name (car property)))
@@ -201,11 +220,11 @@ If DIRECTORY is nil, use `scripture-output-directory'."
             (progn
               (message "Scripture: Loading %s" file)
               (eval (cdr form)))
-          (error 
+          (error
            (progn
              (display-warning 'scripture (format "Error loading file: [%s] %s - %s"
                                                  (car form)
-	                                         file
+                                                 file
                                                  (error-message-string err)) :error)
              (beep))))))))
 
