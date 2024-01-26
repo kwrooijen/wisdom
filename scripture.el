@@ -47,6 +47,8 @@
   (scripture-find-property :PACKAGE))
 
 (defun scripture-find-after ()
+  ;; Properties are symbols. Meaning (evil) is also a
+  ;; symbol. Therefore we need to convert it to a string and read it.
   (read (symbol-name (scripture-find-property :AFTER))))
 
 (defun scripture-find-keyword ()
@@ -84,39 +86,57 @@ Specified in the org babel header arguments PARAMS."
                           (scripture-find-tag))))
     (list package keyword)))
 
+(defun scripture-safe-read (string file &optional line)
+  (condition-case err
+      (read string)
+    (error
+     (progn
+       (display-warning
+        'scripture
+        (if line
+            (format "failed to read body of %s:%s" file line)
+          (format "failed to read body of %s" file)))
+      nil ))))
+
 (defun scripture-wrap-in-condition (file part)
   "Wrap PART in a condition-case form.
 FILE is the file name of the Org file."
-  (let ((body (plist-get part :body))
-        (line (plist-get part :line)))
-    (condition-case err
-        (prin1-to-string
-         (if scripture-wrap-statements-in-condition
-             `(condition-case err
-                  ,(read (format "(progn %s)" body))
-                (error
-                 (progn
-                   (display-warning
-                    'scripture
-                    (format "Error loading %s:%s - %s"
-                            ,(format "%s" file)
-                            ,line
-                            (error-message-string err)))
-                   (beep))))
-           (read (format "(progn %s)" body))))
+  (let* ((body (plist-get part :body))
+         (line (plist-get part :line))
+         (expression (scripture-safe-read (format "(progn %s)" body) file line)))
+    (prin1-to-string
+     (if scripture-wrap-statements-in-condition
+         `(condition-case err
+              ,expression
+            (error
+             (progn
+               (display-warning
+                'scripture
+                (format "Error loading %s:%s - %s"
+                        ,(format "%s" file)
+                        ,line
+                        (error-message-string err)))
+               (beep))))
+       expression))))
 
-      (error
-       (display-warning
-        'scripture
-        (format "failed to read body of %s:%s" file line))))))
+(defun scripture-merge-bodies (file xs)
+  (let ((result '()))
+    (dolist (x xs)
+      (let* ((body (plist-get x :body))
+             (line (plist-get x :line))
+             (result-body (scripture-safe-read body file line)))
+        (when result-body
+          (setq result (append result result-body)))))
+    (when result
+      (prin1-to-string result))))
 
 (defun scripture-build-package-string (package-name package file)
   (concat (format "(use-package %s\n" package-name)
           (let ((straight (or (plist-get (plist-get package :straight) :body) "t")))
             (format ":straight %s\n" straight))
-          (when-let ((bind* (plist-get (plist-get package :bind*) :body)))
+          (when-let ((bind* (scripture-merge-bodies file (plist-get package :bind*))))
             (format ":bind* %s\n" bind*))
-          (when-let ((bind (plist-get (plist-get package :bind) :body)))
+          (when-let ((bind (scripture-merge-bodies file (plist-get package :bind))))
             (format ":bind %s\n" bind))
           (when-let ((after (plist-get package :after)))
             (format ":after %s\n" after))
@@ -132,8 +152,7 @@ FILE is the file name of the Org file."
     (when (not (equal package-name (intern "nil")))
       (let ((package-string (scripture-build-package-string package-name package file)))
         (pp-to-string
-         (read
-          package-string))))))
+         (scripture-safe-read package-string file))))))
 
 (defun scripture-plist-keys (plist)
   "Return the keys of PLIST as a list."
@@ -174,8 +193,6 @@ BODY is the body of the source block."
          (value
           (cond
            ((equal 'replace parameter-rule) `(:body ,body :line ,line))
-           ;; TODO implement merge
-           ((equal 'merge parameter-rule) `(:body ,body :line ,line))
            (t (append previous-body `((:body ,body :line ,line)))))))
     (put-package-parameter package-name package-parameter value)
     nil))
@@ -253,33 +270,8 @@ If DIRECTORY is nil, use `scripture-org-directory'."
         (push output-file compiled)))
     compiled))
 
-(defun scripture-parse-file (file)
-  "Parse FILE and return a list of its top-level forms along with line numbers."
-  (with-temp-buffer
-    (insert-file-contents file)
-    (goto-char (point-min))
-    (let ((forms '())
-          (line-number 1))
-      (while (not (eobp))
-        (let ((form (ignore-errors (read (current-buffer)))))
-          (when form
-            (push (cons line-number form) forms)))
-        (setq line-number (line-number-at-pos (point))))
-      (nreverse forms))))
-
 (defun scripture-load-file (file)
-  (let ((parsed (scripture-parse-file file)))
-    (dolist (form parsed)
-      (condition-case err
-          (progn
-            (message "Scripture: Loading %s" file)
-            (eval (cdr form)))
-        (error
-         (progn
-           (display-warning 'scripture (format "Error loading file: [%s] %s - %s"
-                                               (car form)
-                                               file
-                                               (error-message-string err)) :error)))))))
+  (load file))
 
 (defun scripture-load-directory (&optional directory)
   "Load all Elisp files in DIRECTORY.
