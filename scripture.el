@@ -16,17 +16,6 @@
   :type 'boolean
   :group 'scripture)
 
-(defun scripture-find-tags ()
- (when-let ((heading (org-element-lineage (org-element-context) '(headline) t)))
-   (org-element-property :tags heading)))
-
-(defun scripture-find-tag ()
-  (let* ((tags '("after" "straight" "config" "init" "bind" "bind_"))
-         (tag (car (seq-filter (lambda (tag) (member tag tags)) (scripture-find-tags)))))
-    (when tag
-      (replace-regexp-in-string "_" "-" 
-                                (replace-regexp-in-string "_$" "*" tag)))))
-
 (defun scripture-find-property (property)
   (save-excursion
     (condition-case nil
@@ -35,6 +24,24 @@
             (org-up-element))
           (intern (org-element-property property (org-element-context))))
       (error nil))))
+
+(defun scripture-find-tags ()
+  (save-excursion
+    (condition-case error
+        (progn
+          (while (not (org-element-property :tags (org-element-lineage (org-element-context) '(headline) t)))
+            (org-up-element))
+          (org-element-property :tags (org-element-lineage (org-element-context) '(headline) t)))
+      (error
+       (message "Error finding tags %s" error )
+       nil))))
+
+(defun scripture-find-tag ()
+  (let* ((tags '("after" "straight" "config" "init" "bind" "bind_"))
+         (tag (car (seq-filter (lambda (tag) (member tag tags)) (scripture-find-tags)))))
+    (when tag
+      (replace-regexp-in-string "_" "-"
+                                (replace-regexp-in-string "_$" "*" tag)))))
 
 (defun scripture-find-package ()
   (scripture-find-property :PACKAGE))
@@ -72,51 +79,61 @@ If no priority is set, return 10."
 (defun scripture-get-use-package-package ()
   "Return the package name and parameter of a `use-package' call.
 Specified in the org babel header arguments PARAMS."
-  (when-let ((package (scripture-find-package)))
-    (list (scripture-find-package)
-          (or (scripture-find-keyword)
-              (scripture-find-tag)))))
+  (when-let ((package (scripture-find-package))
+             (keyword (or (scripture-find-keyword)
+                          (scripture-find-tag))))
+    (list package keyword)))
 
 (defun scripture-wrap-in-condition (file part)
   "Wrap PART in a condition-case form.
 FILE is the file name of the Org file."
   (let ((body (plist-get part :body))
         (line (plist-get part :line)))
-    (prin1-to-string
-     (if scripture-wrap-statements-in-condition
-         `(condition-case err
-           ,(read (format "(progn %s)" body))
-         (error
-          (progn
-            (display-warning
-             'scripture
-             (format "Error loading %s:%s - %s"
-                     ,(format "%s" file)
-                     ,line
-                     (error-message-string err)))
-            (beep))))
-      (read (format "(progn %s)" body))))))
+    (condition-case err
+        (prin1-to-string
+         (if scripture-wrap-statements-in-condition
+             `(condition-case err
+                  ,(read (format "(progn %s)" body))
+                (error
+                 (progn
+                   (display-warning
+                    'scripture
+                    (format "Error loading %s:%s - %s"
+                            ,(format "%s" file)
+                            ,line
+                            (error-message-string err)))
+                   (beep))))
+           (read (format "(progn %s)" body))))
+
+      (error
+       (display-warning
+        'scripture
+        (format "failed to read body of %s:%s" file line))))))
+
+(defun scripture-build-package-string (package-name package file)
+  (concat (format "(use-package %s\n" package-name)
+          (let ((straight (or (plist-get (plist-get package :straight) :body) "t")))
+            (format ":straight %s\n" straight))
+          (when-let ((bind* (plist-get (plist-get package :bind*) :body)))
+            (format ":bind* %s\n" bind*))
+          (when-let ((bind (plist-get (plist-get package :bind) :body)))
+            (format ":bind %s\n" bind))
+          (when-let ((after (plist-get package :after)))
+            (format ":after %s\n" after))
+          (when-let ((init (plist-get package :init)))
+            (format ":init %s\n" (string-join (mapcar (lambda (x) (scripture-wrap-in-condition file x)) init))))
+          (when-let ((config (plist-get package :config)))
+            (format ":config %s\n" (string-join (mapcar (lambda (x) (scripture-wrap-in-condition file x)) config))))
+          ")"))
 
 (defun scripture-build-package (file package-name)
   "Build a `use-package' call for PACKAGE-NAME in string format."
   (when-let ((package (plist-get scripture-packages package-name)))
     (when (not (equal package-name (intern "nil")))
-      (pp-to-string
-       (read 
-        (concat (format "(use-package %s\n" package-name)
-                (let ((straight (or (plist-get (plist-get package :straight) :body) "t")))
-                  (format ":straight %s\n" straight))
-                (when-let ((bind* (plist-get (plist-get package :bind*) :body)))
-                  (format ":bind* %s\n" bind*))
-                (when-let ((bind (plist-get (plist-get package :bind) :body)))
-                  (format ":bind %s\n" bind))
-                (when-let ((after (plist-get package :after)))
-                  (format ":after %s\n" after))
-                (when-let ((init (plist-get package :init)))
-                  (format ":init %s\n" (string-join (mapcar (lambda (x) (scripture-wrap-in-condition file x)) init))))
-                (when-let ((config (plist-get package :config)))
-                  (format ":config %s\n" (string-join (mapcar (lambda (x) (scripture-wrap-in-condition file x)) config))))
-                ")"))))))
+      (let ((package-string (scripture-build-package-string package-name package file)))
+        (pp-to-string
+         (read
+          package-string))))))
 
 (defun scripture-plist-keys (plist)
   "Return the keys of PLIST as a list."
@@ -210,7 +227,7 @@ The output Elisp file is stored in `scripture-output-directory'."
     (when (file-newer-than-file-p file output-file)
       (message "Scripture: Compiling %s" file)
       (let* ((scripture-packages nil)
-             (source (scripture-execute-org-src-blocks-and-capture-results file))
+             (source  (scripture-execute-org-src-blocks-and-capture-results file))
              (output (concat source "\n" (scripture-build-packages file))))
         (with-temp-file output-file
           (dolist (property (scripture-file-properties file))
