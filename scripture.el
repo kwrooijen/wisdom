@@ -10,12 +10,36 @@
 (defvar scripture-packages '()
   "List of packages that should be installed.")
 
-(defcustom scripture-use-package-regex "[a-z\\-]+/\\(after\\|straight\\|config\\|init\\)"
-  "Regular expression to match against `use-package' parameters."
-  :type 'string
-  :group 'scripture)
+(defvar scripture-package-parameter-rules '(:straight replace :after replace :bind merge :bind* merge))
 
-(defvar scripture-package-parameter-rules '(:straight replace :after replace))
+(defun scripture-find-tags ()
+ (when-let ((heading (org-element-lineage (org-element-context) '(headline) t)))
+   (org-element-property :tags heading)))
+
+(defun scripture-find-tag ()
+  (let* ((tags '("after" "straight" "config" "init" "bind" "bind_"))
+         (tag (car (seq-filter (lambda (tag) (member tag tags)) (scripture-find-tags)))))
+    (when tag
+      (replace-regexp-in-string "_$" "*"
+                                   (replace-regexp-in-string "_" "-" tag)))))
+
+(defun scripture-find-property (property)
+  (save-excursion
+   (condition-case nil
+       (while (not (org-element-property property (org-element-context)))
+         (org-up-element))
+     (intern (org-element-property property (org-element-context)))
+     (error nil))))
+
+(defun scripture-find-package ()
+  (scripture-find-property :PACKAGE))
+
+(defun scripture-find-after ()
+  (read (symbol-name (scripture-find-property :AFTER))))
+
+(defun scripture-find-keyword ()
+  (when-let ((keyword (scripture-find-property :KEYWORD)))
+    (replace-regexp-in-string "^:" "" (symbol-name keyword))))
 
 (defun scripture-file-properties (file)
   "Return all properties from an org FILE."
@@ -40,15 +64,13 @@ If no priority is set, return 10."
         (string-to-number priority)
       10)))
 
-(defun scripture-get-use-package-package (params)
+(defun scripture-get-use-package-package ()
   "Return the package name and parameter of a `use-package' call.
 Specified in the org babel header arguments PARAMS."
-  (when-let ((filtered
-              (seq-filter
-               (lambda (x)
-                 (string-match-p scripture-use-package-regex x))
-               params)))
-    (split-string (car filtered) "/")))
+  (when-let ((package (scripture-find-package)))
+    (list (scripture-find-package)
+          (or (scripture-find-keyword)
+              (scripture-find-tag)))))
 
 (defun scripture-wrap-in-conditional (file part)
   "Wrap PART in a condition-case form.
@@ -71,16 +93,17 @@ FILE is the file name of the Org file."
 (defun scripture-build-package (file package-name)
   "Build a `use-package' call for PACKAGE-NAME in string format."
   (when-let ((package (plist-get scripture-packages package-name)))
-    (concat (format "(use-package %s\n" (symbol-name package-name))
-            (let ((straight (or (plist-get (plist-get package :straight) :body) "t")))
-              (format ":straight %s\n" straight))
-            (when-let ((after (plist-get (plist-get package :after) :body)))
-              (format ":after %s\n" after))
-            (when-let ((init (plist-get package :init)))
-              (format ":init %s\n" (string-join (mapcar (lambda (x) (scripture-wrap-in-conditional file x)) init))))
-            (when-let ((config (plist-get package :config)))
-              (format ":config %s\n" (string-join (mapcar (lambda (x) (scripture-wrap-in-conditional file x)) config))))
-            ")")))
+    (when (not (equal package-name (intern "nil")))
+     (concat (format "(use-package %s\n" package-name)
+             (let ((straight (or (plist-get (plist-get package :straight) :body) "t")))
+               (format ":straight %s\n" straight))
+             (when-let ((after (plist-get package :after)))
+               (format ":after %s\n" after))
+             (when-let ((init (plist-get package :init)))
+               (format ":init %s\n" (string-join (mapcar (lambda (x) (scripture-wrap-in-conditional file x)) init))))
+             (when-let ((config (plist-get package :config)))
+               (format ":config %s\n" (string-join (mapcar (lambda (x) (scripture-wrap-in-conditional file x)) config))))
+             ")"))))
 
 (defun scripture-plist-keys (plist)
   "Return the keys of PLIST as a list."
@@ -99,35 +122,32 @@ The resulting contains all all packages in `scripture-packages'."
       (setq result (concat result (scripture-build-package file package-name))))
     result))
 
+(defun put-package-parameter (package-name parameter value)
+  (setq scripture-packages
+        (plist-put
+         scripture-packages
+         package-name
+         (plist-put (plist-get scripture-packages package-name)
+                    parameter
+                    value))))
+
 (defun scripture-add-package (package body element)
   "Execute a block of Use-Package code with org-babel.
 PACKAGE is a list of the package name and parameter.
 BODY is the body of the source block."
-  (let* ((begin (org-element-property :begin (org-element-context)))
+  (let* ((begin (org-element-property :begin element))
          (line (line-number-at-pos begin))
-         (package-name (intern (car package)))
+         (package-name (car package))
          (package-parameter (intern (concat ":" (car (cdr package)))))
          (previous-body (plist-get (plist-get scripture-packages package-name) package-parameter))
          (parameter-rule (plist-get scripture-package-parameter-rules package-parameter))
-         (new-package-parameter
+         (value
           (cond
-           ((equal 'replace parameter-rule)
-            (plist-put (plist-get scripture-packages package-name)
-                       package-parameter
-                       `(:body ,body :line ,line)))
-           ((equal 'merge parameter-rule)
-            ;; TODO
-            (plist-put (plist-get scripture-packages package-name)
-                       package-parameter
-                       (append previous-body
-                               `((:body ,body :line ,line)))))
-           (t
-            (plist-put (plist-get scripture-packages package-name)
-                       package-parameter
-                       (append previous-body
-                               `((:body ,body :line ,line))))))))
-    (setq scripture-packages
-          (plist-put scripture-packages package-name new-package-parameter))
+           ((equal 'replace parameter-rule) `(:body ,body :line ,line))
+           ;; TODO implement merge
+           ((equal 'merge parameter-rule) (append previous-body `((:body ,body :line ,line))))
+           (t (append previous-body `((:body ,body :line ,line)))))))
+    (put-package-parameter package-name package-parameter value)
     nil))
 
 (defun scripture-execute-org-src-blocks-and-capture-results (file)
@@ -137,12 +157,17 @@ BODY is the body of the source block."
     (org-mode)
     (let ((results '()))
       (org-babel-map-src-blocks nil
+        (when-let ((package-name (scripture-find-package))
+                   (after (scripture-find-after)))
+          (put-package-parameter package-name :after after))
         (let ((body (org-element-property :value (org-element-context)))
-              (language (org-element-property :language (org-element-context)))
-              (parameters (split-string (or (org-element-property :parameters (org-element-context)) "") " ")))
+              (language (org-element-property :language (org-element-context))))
           (when (string= language "emacs-lisp")
-            (if-let ((package (scripture-get-use-package-package parameters)))
-                (scripture-add-package package body (org-element-context))
+	    (message "LANGUAGE %s %s" (type-of language) language)
+            (if-let ((package (scripture-get-use-package-package)))
+                (progn
+                  (message "PACKAGE %s" package)
+                 (scripture-add-package package body (org-element-context)))
               (when (stringp body)
                 (push body results))))))
       (mapconcat 'identity (reverse results) "\n"))))
@@ -193,7 +218,7 @@ The output Elisp file is stored in `scripture-output-directory'."
 (defun scripture-compile-directory (&optional directory)
   "Compile all Org files in DIRECTORY to Elisp.
 If DIRECTORY is nil, use `scripture-org-directory'."
-  (dolist (file (scripture-get-files "\\.org$" (or scripture-org-directory directory)))
+  (dolist (file (scripture-get-files "^[^#]*\\.org$" (or scripture-org-directory directory)))
     (scripture-compile-file file)))
 
 (defun scripture-parse-file (file)
@@ -213,7 +238,7 @@ If DIRECTORY is nil, use `scripture-org-directory'."
 (defun scripture-load-directory (&optional directory)
   "Load all Elisp files in DIRECTORY.
 If DIRECTORY is nil, use `scripture-output-directory'."
-  (dolist (file (scripture-get-files "\\.el$" (or scripture-output-directory directory)))
+  (dolist (file (scripture-get-files "^[^#]*\\.el$" (or scripture-output-directory directory)))
     (let ((parsed (scripture-parse-file file)))
       (dolist (form parsed)
         (condition-case err
@@ -264,5 +289,15 @@ If COMPILE-AND-LOAD is non-nil, compile and load the Elisp files."
        :done)))
 
 (provide 'scripture)
+
+;;* TODO Wrap regular emacs code in try / catch
+
+;;* TODO Add support for :merge package parameter (:after, :bind, :bind*)
+
+;;* TODO :STRAIGHT: t
+
+;;* TODO Create a "preview" buffer where the org file gets displayed as elisp (formatted, and without condition statements)
+
+;;* TODO Create `scripture-reload-buffer` function.
 
 ;;; scripture.el ends here
