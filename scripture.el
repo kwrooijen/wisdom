@@ -15,6 +15,7 @@
   :group 'scripture)
 
 (defun scripture-find-property (property)
+  "Find PROPERTY in the current Org element or any ancestor element."
   (save-excursion
     (condition-case nil
         (progn
@@ -24,6 +25,7 @@
       (error nil))))
 
 (defun scripture-find-tags ()
+  "Find tags in the current Org element or any ancestor element."
   (save-excursion
     (condition-case error
         (progn
@@ -33,6 +35,7 @@
       (error nil))))
 
 (defun scripture-find-tag ()
+  "Find a `use-package' tag in the current Org element or any ancestor element."
   (let* ((tags '("after" "straight" "config" "init" "bind" "bind_" "hook"))
          (tag (car (seq-filter (lambda (tag) (member tag tags)) (scripture-find-tags)))))
     (when tag
@@ -40,19 +43,23 @@
                                 (replace-regexp-in-string "_$" "*" tag)))))
 
 (defun scripture-find-package ()
+  "Find a `use-package' package in the current Org element or any ancestor element."
   (scripture-find-property :PACKAGE))
 
 (defun scripture-find-after ()
+  "Find a `use-package' after in the current Org element or any ancestor element."
   ;; Properties are symbols. Meaning (evil) is also a
   ;; symbol. Therefore we need to convert it to a string and read it.
   (read (symbol-name (scripture-find-property :AFTER))))
 
 (defun scripture-find-straight ()
+  "Find a `use-package' straight in the current Org element or any ancestor element."
   ;; Properties are symbols. Meaning (evil) is also a
   ;; symbol. Therefore we need to convert it to a string and read it.
   (read (symbol-name (scripture-find-property :STRAIGHT))))
 
 (defun scripture-find-keyword ()
+  "Find a `use-package' keyword in the current Org element or any ancestor element."
   (when-let ((keyword (scripture-find-property :KEYWORD)))
     (replace-regexp-in-string "^:" "" (symbol-name keyword))))
 
@@ -88,6 +95,11 @@ Specified in the org babel header arguments PARAMS."
     (list package keyword)))
 
 (defun scripture-safe-read (string file &optional line)
+  "Read STRING and return the result.
+If STRING is not a valid Elisp form, return nil.
+FILE is the file name of the Org file.
+LINE is the line number of the Org file.
+If read fails, display a warning."
   (condition-case err
       (read string)
     (error
@@ -96,11 +108,12 @@ Specified in the org babel header arguments PARAMS."
         'scripture
         (if line
             (format "failed to read body of %s:%s" file line)
-          (format "failed to read body of %s" file)))
+          (format "failed to read body of %s" file))
+        :error)
       nil ))))
 
 (defun scripture-wrap-in-condition (file part)
-  "Wrap PART in a condition-case form.
+  "Wrap PART in a `condition-case' form.
 FILE is the file name of the Org file."
   (let* ((body (plist-get part :body))
          (line (plist-get part :line))
@@ -121,6 +134,9 @@ FILE is the file name of the Org file."
        expression))))
 
 (defun scripture-merge-bodies (file xs)
+  "Merge the bodies of a list of `use-package' statements.
+FILE is the file name of the Org file.
+XS is a list of `use-package' statements."
   (let ((result '()))
     (dolist (x xs)
       (let* ((body (plist-get x :body))
@@ -132,6 +148,9 @@ FILE is the file name of the Org file."
       (prin1-to-string result))))
 
 (defun scripture-build-package-string (package-name package file)
+  "Build a `use-package' call for PACKAGE-NAME in string format.
+PACKAGE is the package plist.
+FILE is the file name of the Org file."
   (concat (format "(use-package %s\n" package-name)
           (when-let ((straight (plist-get (car (plist-get package :straight)) :body)))
             (format ":straight %s\n" straight))
@@ -150,7 +169,9 @@ FILE is the file name of the Org file."
           ")"))
 
 (defun scripture-build-package (file package-name)
-  "Build a `use-package' call for PACKAGE-NAME in string format."
+  "Build a `use-package' call for PACKAGE-NAME in string format.
+FILE is the file name of the Org file.
+PACKAGE-NAME is the name of the package."
   (when-let ((package (plist-get scripture-packages package-name)))
     (when (not (equal package-name (intern "nil")))
       (let ((package-string (scripture-build-package-string package-name package file)))
@@ -167,7 +188,8 @@ FILE is the file name of the Org file."
 
 (defun scripture-build-packages (file)
   "Build a string of `use-package' statements.
-The resulting contains all all packages in `scripture-packages'."
+The resulting contains all all packages in `scripture-packages'.
+FILE is the file name of the Org file."
   (let ((package-names (scripture-plist-keys scripture-packages))
         (result ""))
     (dolist (package-name package-names)
@@ -175,6 +197,10 @@ The resulting contains all all packages in `scripture-packages'."
     result))
 
 (defun put-package-parameter (package-name parameter value)
+  "Put a parameter in the `scripture-packages' plist.
+PACKAGE-NAME is the name of the package.
+PARAMETER is the parameter to set.
+VALUE is the value to set."
   (setq scripture-packages
         (plist-put
          scripture-packages
@@ -186,7 +212,8 @@ The resulting contains all all packages in `scripture-packages'."
 (defun scripture-add-package (package body element)
   "Execute a block of Use-Package code with org-babel.
 PACKAGE is a list of the package name and parameter.
-BODY is the body of the source block."
+BODY is the body of the source block.
+ELEMENT is the org element of the source block."
   (let* ((begin (org-element-property :begin element))
          (line (line-number-at-pos begin))
          (package-name (car package))
@@ -267,6 +294,8 @@ The output Elisp file is stored in `scripture-output-directory'."
       output-file)))
 
 (defun scripture-get-files (extension directory)
+  "Return all files with EXTENSION in DIRECTORY.
+The files are sorted by priority."
   (let* ((files (directory-files-recursively directory extension)))
     (sort files (lambda (a b) (< (scripture-file-priority a)
                                  (scripture-file-priority b))))))
@@ -281,6 +310,7 @@ If DIRECTORY is nil, use `scripture-org-directory'."
     compiled))
 
 (defun scripture-load-file (file)
+  "Load FILE."
   (load file))
 
 (defun scripture-load-directory (&optional directory)
@@ -290,6 +320,7 @@ If DIRECTORY is nil, use `scripture-output-directory'."
     (scripture-load-file file)))
 
 (defun scripture-reload ()
+  "Compile and load all Org files."
   (interactive)
   (dolist (compiled-file (scripture-compile-directory))
     (scripture-load-file compiled-file)))
@@ -297,7 +328,10 @@ If DIRECTORY is nil, use `scripture-output-directory'."
 (defmacro scripture-bootstrap (&rest opts)
   "Bootstrap straight.el and `use-package'.
 This macro should be called at the beginning of the init file.
-If COMPILE-AND-LOAD is non-nil, compile and load the Elisp files."
+If COMPILE-AND-LOAD is non-nil, compile and load the Elisp files.
+OPTS is a plist with the following keys:
+:compile-and-load - If non-nil, compile and load the Elisp files.
+:org-directory - The directory where the Org files are stored."
   `(let ((compile-and-load (plist-get (quote ,opts) :compile-and-load))
          (user-org-directory (plist-get (quote ,opts) :org-directory)))
      (when user-org-directory
@@ -330,6 +364,7 @@ If COMPILE-AND-LOAD is non-nil, compile and load the Elisp files."
        :done)))
 
 (defun scripture-preview ()
+  "Compile the current buffer and display the result in *scripture preview*."
   (interactive)
   (let* ((buffer (get-buffer-create "*scripture preview*"))
          ;; We display the buffer first, then compile. If there is an
@@ -355,5 +390,7 @@ If COMPILE-AND-LOAD is non-nil, compile and load the Elisp files."
     (remove-hook 'after-save-hook 'scripture-preview t)))
 
 (provide 'scripture)
+
+;;* TODO Subdirectories
 
 ;;; scripture.el ends here
