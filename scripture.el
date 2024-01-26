@@ -12,7 +12,7 @@
 
 (defvar scripture-package-parameter-rules '(:straight replace :after replace :bind merge :bind* merge))
 
-(defcustom scripture-no-condition nil "Don't wrap code in condition statements."
+(defcustom scripture-wrap-statements-in-condition t "Wrap code in condition statements."
   :type 'boolean
   :group 'scripture)
 
@@ -83,9 +83,8 @@ FILE is the file name of the Org file."
   (let ((body (plist-get part :body))
         (line (plist-get part :line)))
     (prin1-to-string
-     (if scripture-no-condition
-         (read (format "(progn %s)" body))
-      `(condition-case err
+     (if scripture-wrap-statements-in-condition
+         `(condition-case err
            ,(read (format "(progn %s)" body))
          (error
           (progn
@@ -95,7 +94,8 @@ FILE is the file name of the Org file."
                      ,(format "%s" file)
                      ,line
                      (error-message-string err)))
-            (beep))))))))
+            (beep))))
+      (read (format "(progn %s)" body))))))
 
 (defun scripture-build-package (file package-name)
   "Build a `use-package' call for PACKAGE-NAME in string format."
@@ -176,11 +176,8 @@ BODY is the body of the source block."
         (let ((body (org-element-property :value (org-element-context)))
               (language (org-element-property :language (org-element-context))))
           (when (string= language "emacs-lisp")
-	    (message "LANGUAGE %s %s" (type-of language) language)
             (if-let ((package (scripture-get-use-package-package)))
-                (progn
-                  (message "PACKAGE %s" package)
-                 (scripture-add-package package body (org-element-context)))
+                (scripture-add-package package body (org-element-context))
               (when (stringp body)
                 (push body results))))))
       (mapconcat 'identity (reverse results) "\n"))))
@@ -211,6 +208,7 @@ The output Elisp file is stored in `scripture-output-directory'."
     (make-directory scripture-output-directory))
   (let ((output-file (scripture-output-file-name file)))
     (when (file-newer-than-file-p file output-file)
+      (message "Scripture: Compiling %s" file)
       (let* ((scripture-packages nil)
              (source (scripture-execute-org-src-blocks-and-capture-results file))
              (output (concat source "\n" (scripture-build-packages file))))
@@ -221,7 +219,8 @@ The output Elisp file is stored in `scripture-output-directory'."
                             (cdr property))))
           (insert output)))
       (when (file-exists-p output-file)
-        (set-file-times output-file)))))
+        (set-file-times output-file))
+      output-file)))
 
 (defun scripture-get-files (extension directory)
   (let* ((files (directory-files-recursively directory extension)))
@@ -231,8 +230,11 @@ The output Elisp file is stored in `scripture-output-directory'."
 (defun scripture-compile-directory (&optional directory)
   "Compile all Org files in DIRECTORY to Elisp.
 If DIRECTORY is nil, use `scripture-org-directory'."
-  (dolist (file (scripture-get-files "^[^#]*\\.org$" (or scripture-org-directory directory)))
-    (scripture-compile-file file)))
+  (let ((compiled '()))
+    (dolist (file (scripture-get-files "^[^#]*\\.org$" (or scripture-org-directory directory)))
+      (when-let ((output-file (scripture-compile-file file)))
+        (push output-file compiled)))
+    compiled))
 
 (defun scripture-parse-file (file)
   "Parse FILE and return a list of its top-level forms along with line numbers."
@@ -248,23 +250,30 @@ If DIRECTORY is nil, use `scripture-org-directory'."
         (setq line-number (line-number-at-pos (point))))
       (nreverse forms))))
 
+(defun scripture-load-file (file)
+  (let ((parsed (scripture-parse-file file)))
+    (dolist (form parsed)
+      (condition-case err
+          (progn
+            (message "Scripture: Loading %s" file)
+            (eval (cdr form)))
+        (error
+         (progn
+           (display-warning 'scripture (format "Error loading file: [%s] %s - %s"
+                                               (car form)
+                                               file
+                                               (error-message-string err)) :error)))))))
+
 (defun scripture-load-directory (&optional directory)
   "Load all Elisp files in DIRECTORY.
 If DIRECTORY is nil, use `scripture-output-directory'."
   (dolist (file (scripture-get-files "^[^#]*\\.el$" (or scripture-output-directory directory)))
-    (let ((parsed (scripture-parse-file file)))
-      (dolist (form parsed)
-        (condition-case err
-            (progn
-              (message "Scripture: Loading %s" file)
-              (eval (cdr form)))
-          (error
-           (progn
-             (display-warning 'scripture (format "Error loading file: [%s] %s - %s"
-                                                 (car form)
-                                                 file
-                                                 (error-message-string err)) :error)
-             (beep))))))))
+    (scripture-load-file file)))
+
+(defun scripture-reload ()
+  (interactive)
+  (dolist (compiled-file (scripture-compile-directory))
+    (scripture-load-file compiled-file)))
 
 (defmacro scripture-bootstrap (&rest opts)
   "Bootstrap straight.el and `use-package'.
@@ -310,7 +319,5 @@ If COMPILE-AND-LOAD is non-nil, compile and load the Elisp files."
 ;;* TODO :STRAIGHT: t
 
 ;;* TODO Create a "preview" buffer where the org file gets displayed as elisp (formatted, and without condition statements)
-
-;;* TODO Create `scripture-reload-buffer` function.
 
 ;;; scripture.el ends here
