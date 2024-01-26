@@ -10,8 +10,6 @@
 (defvar scripture-packages '()
   "List of packages that should be installed.")
 
-(defvar scripture-package-parameter-rules '(:straight replace :after replace :bind merge :bind* merge))
-
 (defcustom scripture-wrap-statements-in-condition t "Wrap code in condition statements."
   :type 'boolean
   :group 'scripture)
@@ -37,7 +35,7 @@
        nil))))
 
 (defun scripture-find-tag ()
-  (let* ((tags '("after" "straight" "config" "init" "bind" "bind_"))
+  (let* ((tags '("after" "straight" "config" "init" "bind" "bind_" "hook"))
          (tag (car (seq-filter (lambda (tag) (member tag tags)) (scripture-find-tags)))))
     (when tag
       (replace-regexp-in-string "_" "-"
@@ -50,6 +48,11 @@
   ;; Properties are symbols. Meaning (evil) is also a
   ;; symbol. Therefore we need to convert it to a string and read it.
   (read (symbol-name (scripture-find-property :AFTER))))
+
+(defun scripture-find-straight ()
+  ;; Properties are symbols. Meaning (evil) is also a
+  ;; symbol. Therefore we need to convert it to a string and read it.
+  (read (symbol-name (scripture-find-property :STRAIGHT))))
 
 (defun scripture-find-keyword ()
   (when-let ((keyword (scripture-find-property :KEYWORD)))
@@ -104,7 +107,7 @@ FILE is the file name of the Org file."
   (let* ((body (plist-get part :body))
          (line (plist-get part :line))
          (expression (scripture-safe-read (format "(progn %s)" body) file line)))
-    (prin1-to-string
+    (pp-to-string
      (if scripture-wrap-statements-in-condition
          `(condition-case err
               ,expression
@@ -115,8 +118,7 @@ FILE is the file name of the Org file."
                 (format "Error loading %s:%s - %s"
                         ,(format "%s" file)
                         ,line
-                        (error-message-string err)))
-               (beep))))
+                        (error-message-string err))))))
        expression))))
 
 (defun scripture-merge-bodies (file xs)
@@ -132,14 +134,16 @@ FILE is the file name of the Org file."
 
 (defun scripture-build-package-string (package-name package file)
   (concat (format "(use-package %s\n" package-name)
-          (let ((straight (or (plist-get (plist-get package :straight) :body) "t")))
+          (when-let ((straight (plist-get (car (plist-get package :straight)) :body)))
             (format ":straight %s\n" straight))
+          (when-let ((after (plist-get (car (plist-get package :after)) :body)))
+            (format ":after %s\n" after))
           (when-let ((bind* (scripture-merge-bodies file (plist-get package :bind*))))
             (format ":bind* %s\n" bind*))
           (when-let ((bind (scripture-merge-bodies file (plist-get package :bind))))
             (format ":bind %s\n" bind))
-          (when-let ((after (plist-get package :after)))
-            (format ":after %s\n" after))
+          (when-let ((hook (scripture-merge-bodies file (plist-get package :hook))))
+            (format ":hook %s\n" hook))
           (when-let ((init (plist-get package :init)))
             (format ":init %s\n" (string-join (mapcar (lambda (x) (scripture-wrap-in-condition file x)) init))))
           (when-let ((config (plist-get package :config)))
@@ -189,11 +193,7 @@ BODY is the body of the source block."
          (package-name (car package))
          (package-parameter (intern (concat ":" (car (cdr package)))))
          (previous-body (plist-get (plist-get scripture-packages package-name) package-parameter))
-         (parameter-rule (plist-get scripture-package-parameter-rules package-parameter))
-         (value
-          (cond
-           ((equal 'replace parameter-rule) `(:body ,body :line ,line))
-           (t (append previous-body `((:body ,body :line ,line)))))))
+         (value (append previous-body `((:body ,body :line ,line)))))
     (put-package-parameter package-name package-parameter value)
     nil))
 
@@ -206,14 +206,19 @@ BODY is the body of the source block."
       (org-babel-map-src-blocks nil
         (when-let ((package-name (scripture-find-package))
                    (after (scripture-find-after)))
-          (put-package-parameter package-name :after after))
+          (put-package-parameter package-name :after `((:body ,after))))
+        (when-let ((package-name (scripture-find-package))
+                   (straight (scripture-find-straight)))
+          (put-package-parameter package-name :straight `((:body ,straight))))
         (let ((body (org-element-property :value (org-element-context)))
+              (line (line-number-at-pos (org-element-property :begin (org-element-context))))
               (language (org-element-property :language (org-element-context))))
           (when (string= language "emacs-lisp")
             (if-let ((package (scripture-get-use-package-package)))
                 (scripture-add-package package body (org-element-context))
               (when (stringp body)
-                (push body results))))))
+                (push (scripture-wrap-in-condition file `(:body ,body :line line))
+                      results))))))
       (mapconcat 'identity (reverse results) "\n"))))
 
 (defcustom scripture-output-directory "~/.emacs.d/scripture"
@@ -320,12 +325,6 @@ If COMPILE-AND-LOAD is non-nil, compile and load the Elisp files."
        :done)))
 
 (provide 'scripture)
-
-;;* TODO Wrap regular emacs code in try / catch
-
-;;* TODO Add support for :merge package parameter (:after, :bind, :bind*)
-
-;;* TODO :STRAIGHT: t
 
 ;;* TODO Create a "preview" buffer where the org file gets displayed as elisp (formatted, and without condition statements)
 
