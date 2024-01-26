@@ -249,7 +249,7 @@ ELEMENT is the org element of the source block."
             (if-let ((package (scripture-get-use-package-package)))
                 (scripture-add-package package body (org-element-context))
               (when (stringp body)
-                (push (scripture-wrap-in-condition file `(:body ,body :line line))
+                (push (scripture-wrap-in-condition file `(:body ,body :line ,line))
                       results))))))
       (mapconcat 'identity (reverse results) "\n"))))
 
