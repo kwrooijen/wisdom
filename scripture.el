@@ -265,9 +265,11 @@ ELEMENT is the org element of the source block."
 
 (defun scripture-output-file-name (file)
   "Return the name of the output Elisp file for FILE."
-  (concat (file-name-as-directory scripture-output-directory)
-          (file-name-nondirectory (file-name-sans-extension file))
-          ".el"))
+  (if (string-prefix-p scripture-org-directory file)
+      (concat (file-name-as-directory scripture-output-directory)
+              (file-name-sans-extension (substring file (length scripture-org-directory)))
+              ".el")
+    (error "File is not in scripture-org-directory")))
 
 (defun scripture-compile-file (file)
   "Compile FILE to Elisp.
@@ -278,6 +280,7 @@ The output Elisp file is stored in `scripture-output-directory'."
   (unless (file-exists-p scripture-output-directory)
     (make-directory scripture-output-directory))
   (let ((output-file (scripture-output-file-name file)))
+    (make-directory (file-name-directory output-file) t)
     (when (file-newer-than-file-p file output-file)
       (message "Scripture: Compiling %s" file)
       (let* ((scripture-packages nil)
@@ -300,11 +303,11 @@ The files are sorted by priority."
     (sort files (lambda (a b) (< (scripture-file-priority a)
                                  (scripture-file-priority b))))))
 
-(defun scripture-compile-directory (&optional directory)
-  "Compile all Org files in DIRECTORY to Elisp.
-If DIRECTORY is nil, use `scripture-org-directory'."
+(defun scripture-compile-directory ()
+  "Compile all Org files in `scripture-org-directory' to Elisp.
+All files will be outputted to `scripture-output-directory'."
   (let ((compiled '()))
-    (dolist (file (scripture-get-files "^[^#]*\\.org$" (or scripture-org-directory directory)))
+    (dolist (file (scripture-get-files "^[^#]*\\.org$" scripture-org-directory))
       (when-let ((output-file (scripture-compile-file file)))
         (push output-file compiled)))
     compiled))
@@ -313,10 +316,9 @@ If DIRECTORY is nil, use `scripture-org-directory'."
   "Load FILE."
   (load file))
 
-(defun scripture-load-directory (&optional directory)
-  "Load all Elisp files in DIRECTORY.
-If DIRECTORY is nil, use `scripture-output-directory'."
-  (dolist (file (scripture-get-files "^[^#]*\\.el$" (or scripture-output-directory directory)))
+(defun scripture-load-directory ()
+  "Load all Elisp files in `scripture-output-directory'. "
+  (dolist (file (scripture-get-files "^[^#]*\\.el$" scripture-output-directory))
     (scripture-load-file file)))
 
 (defun scripture-reload ()
@@ -390,7 +392,5 @@ OPTS is a plist with the following keys:
     (remove-hook 'after-save-hook 'scripture-preview t)))
 
 (provide 'scripture)
-
-;;* TODO Subdirectories
 
 ;;; scripture.el ends here
