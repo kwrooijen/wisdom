@@ -30,9 +30,7 @@
           (while (not (org-element-property :tags (org-element-lineage (org-element-context) '(headline) t)))
             (org-up-element))
           (org-element-property :tags (org-element-lineage (org-element-context) '(headline) t)))
-      (error
-       (message "Error finding tags %s" error )
-       nil))))
+      (error nil))))
 
 (defun scripture-find-tag ()
   (let* ((tags '("after" "straight" "config" "init" "bind" "bind_" "hook"))
@@ -118,7 +116,8 @@ FILE is the file name of the Org file."
                 (format "Error loading %s:%s - %s"
                         ,(format "%s" file)
                         ,line
-                        (error-message-string err))))))
+                        (error-message-string err))
+                :error))))
        expression))))
 
 (defun scripture-merge-bodies (file xs)
@@ -203,13 +202,19 @@ BODY is the body of the source block."
     (insert-file-contents file)
     (org-mode)
     (let ((results '()))
+      (org-map-entries
+       (lambda ()
+         (let ((line (line-number-at-pos (org-element-property :begin (org-element-context)))))
+           (when-let ((package-name (scripture-find-package))
+                      (package (org-element-property :PACKAGE (org-element-context))))
+             (put-package-parameter package-name :package line))
+           (when-let ((package-name (scripture-find-package))
+                      (after (scripture-find-after)))
+             (put-package-parameter package-name :after `((:body ,after :line ,line))))
+           (when-let ((package-name (scripture-find-package))
+                      (straight (scripture-find-straight)))
+             (put-package-parameter package-name :straight `((:body ,straight :line ,line)))))))
       (org-babel-map-src-blocks nil
-        (when-let ((package-name (scripture-find-package))
-                   (after (scripture-find-after)))
-          (put-package-parameter package-name :after `((:body ,after))))
-        (when-let ((package-name (scripture-find-package))
-                   (straight (scripture-find-straight)))
-          (put-package-parameter package-name :straight `((:body ,straight))))
         (let ((body (org-element-property :value (org-element-context)))
               (line (line-number-at-pos (org-element-property :begin (org-element-context))))
               (language (org-element-property :language (org-element-context))))
@@ -324,8 +329,31 @@ If COMPILE-AND-LOAD is non-nil, compile and load the Elisp files."
        (setq gc-cons-threshold 800000)
        :done)))
 
-(provide 'scripture)
+(defun scripture-preview ()
+  (interactive)
+  (let* ((buffer (get-buffer-create "*scripture preview*"))
+         ;; We display the buffer first, then compile. If there is an
+         ;; error it will not be overruled by the preview buffer.
+         (_ (display-buffer buffer))
+         (scripture-wrap-statements-in-condition nil)
+         (file (buffer-file-name (current-buffer)))
+         (scripture-packages nil)
+         (source (scripture-execute-org-src-blocks-and-capture-results file))
+         (output (concat source "\n" (scripture-build-packages file))))
+    (with-current-buffer buffer
+      (emacs-lisp-mode)
+      (read-only-mode 1)
+      (save-excursion
+        (let ((inhibit-read-only t))
+          (replace-region-contents (point-min) (point-max) (lambda () output)))))))
 
-;;* TODO Create a "preview" buffer where the org file gets displayed as elisp (formatted, and without condition statements)
+(define-minor-mode scripture-preview-mode
+  "Preview the current buffer as elisp."
+  :lighter " scripture-preview"
+  (if scripture-preview-mode
+      (add-hook 'after-save-hook 'scripture-preview nil t)
+    (remove-hook 'after-save-hook 'scripture-preview t)))
+
+(provide 'scripture)
 
 ;;; scripture.el ends here
