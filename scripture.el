@@ -73,11 +73,19 @@ underscore, it will be replaced with a asterisk."
     (prin1-to-string (read (symbol-name after)))))
 
 (defun scripture-find-straight ()
-  "Find a `use-package' straight in the current Org element or any ancestor element."
+  "Find a `use-package' straight in the current Org element or any
+ancestor element."
   ;; Properties are symbols. Meaning (evil) is also a
   ;; symbol. Therefore we need to convert it to a string and read it.
   (when-let ((straight (scripture-find-property :STRAIGHT)))
     (prin1-to-string (read (symbol-name straight)))))
+
+(defun scripture-find-requires ()
+  "Find a `use-package' straight in the current Org element or any ancestor element."
+  ;; Properties are symbols. Meaning (evil) is also a
+  ;; symbol. Therefore we need to convert it to a string and read it.
+  (when-let ((requires (scripture-find-property :REQUIRES)))
+    (prin1-to-string (read (symbol-name requires)))))
 
 (defun scripture-find-keyword ()
   "Find a `use-package' keyword in the current Org element or any ancestor element."
@@ -175,6 +183,8 @@ FILE is the file name of the Org file."
   (concat (format "(use-package %s\n" package-name)
           (when-let ((straight (plist-get (car (plist-get package :straight)) :body)))
             (format ":straight %s\n" straight))
+          (when-let ((requires (plist-get (car (plist-get package :requires)) :body)))
+            (format ":requires %s\n" requires))
           (when-let ((after (plist-get (car (plist-get package :after)) :body)))
             (format ":after %s\n" after))
           (when-let ((bind* (scripture-merge-bodies file (plist-get package :bind*))))
@@ -266,7 +276,10 @@ ELEMENT is the org element of the source block."
              (put-package-parameter package-name :after `((:body ,after :line ,line))))
            (when-let ((package-name (scripture-find-package))
                       (straight (scripture-find-straight)))
-             (put-package-parameter package-name :straight `((:body ,straight :line ,line)))))))
+             (put-package-parameter package-name :straight `((:body ,straight :line ,line))))
+           (when-let ((package-name (scripture-find-package))
+                      (requires (scripture-find-requires)))
+             (put-package-parameter package-name :requires `((:body ,requires :line ,line)))))))
       (org-babel-map-src-blocks nil
         (let ((body (org-element-property :value (org-element-context)))
               (line (line-number-at-pos (org-element-property :begin (org-element-context))))
@@ -335,52 +348,17 @@ All files will be outputted to `scripture-output-directory'."
 
 (defun scripture-load-directory ()
   "Load all Elisp files in `scripture-output-directory'. "
-  (dolist (file (scripture-get-files "^[^#]*\\.el$" scripture-output-directory))
-    (scripture-load-file file)))
+  (let ((initial-gc-cons-threshold gc-cons-threshold))
+    (setq gc-cons-threshold (* 1024 1024 100))
+    (dolist (file (scripture-get-files "^[^#]*\\.el$" scripture-output-directory))
+      (scripture-load-file file))
+    (setq gc-cons-threshold initial-gc-cons-threshold)))
 
 (defun scripture-reload ()
   "Compile and load all Org files."
   (interactive)
   (dolist (compiled-file (scripture-compile-directory))
     (scripture-load-file compiled-file)))
-
-(defmacro scripture-bootstrap (&rest opts)
-  "Bootstrap straight.el and `use-package'.
-This macro should be called at the beginning of the init file.
-If COMPILE-AND-LOAD is non-nil, compile and load the Elisp files.
-OPTS is a plist with the following keys:
-:compile-and-load - If non-nil, compile and load the Elisp files.
-:org-directory - The directory where the Org files are stored."
-  `(let ((compile-and-load (plist-get (quote ,opts) :compile-and-load))
-         (user-org-directory (plist-get (quote ,opts) :org-directory)))
-     (when user-org-directory
-       (setq scripture-org-directory (eval user-org-directory)))
-     (setq straight-repository-branch "develop")
-     (setq gc-cons-threshold (* 1024 1024 100))
-     (defvar bootstrap-version)
-     (setq package-enable-at-startup nil)
-     (let ((bootstrap-file
-            (expand-file-name
-             "straight/repos/straight.el/bootstrap.el"
-             (or (bound-and-true-p straight-base-dir)
-                 user-emacs-directory)))
-           (bootstrap-version 7))
-       (unless (file-exists-p bootstrap-file)
-         (with-current-buffer
-             (url-retrieve-synchronously
-              "https://raw.githubusercontent.com/radian-software/straight.el/develop/install.el"
-              'silent 'inhibit-cookies)
-           (goto-char (point-max))
-           (eval-print-last-sexp)))
-       (load bootstrap-file nil 'nomessage)
-       (straight-use-package 'use-package)
-       (straight-use-package 'org)
-       (require 'bind-key)
-       (when compile-and-load
-         (scripture-compile-directory)
-         (scripture-load-directory))
-       (setq gc-cons-threshold 800000)
-       :done)))
 
 (defun scripture-preview ()
   "Compile the current buffer and display the result in *scripture preview*."
