@@ -14,6 +14,14 @@
   :type 'boolean
   :group 'scripture)
 
+(defcustom scripture-use-package-keywords
+  '("after" "straight" "config" "init" "bind" "bind_" "hook" "general" "custom")
+  "List of `use-package' keywords that can be used.
+The keywords are case sensitive. If the tag ends with an
+underscore, it will be replaced with a asterisk."
+  :type 'list
+  :group 'scripture)
+
 (defun scripture-find-property (property)
   "Find PROPERTY in the current Org element or any ancestor element."
   (save-excursion
@@ -36,8 +44,8 @@
 
 (defun scripture-find-tag ()
   "Find a `use-package' tag in the current Org element or any ancestor element."
-  (let* ((tags '("after" "straight" "config" "init" "bind" "bind_" "hook"))
-         (tag (car (seq-filter (lambda (tag) (member tag tags)) (scripture-find-tags)))))
+  (let* ((keywords scripture-use-package-keywords)
+         (tag (car (seq-filter (lambda (tag) (member tag keywords)) (scripture-find-tags)))))
     (when tag
       (replace-regexp-in-string "_" "-"
                                 (replace-regexp-in-string "_$" "*" tag)))))
@@ -166,6 +174,11 @@ FILE is the file name of the Org file."
             (format ":init %s\n" (string-join (mapcar (lambda (x) (scripture-wrap-in-condition file x)) init))))
           (when-let ((config (plist-get package :config)))
             (format ":config %s\n" (string-join (mapcar (lambda (x) (scripture-wrap-in-condition file x)) config))))
+          (when-let ((general (plist-get package :general)))
+            (format ":general %s\n" (string-join (mapcar (lambda (part) (plist-get part :body)) general))))
+          (when-let ((custom (plist-get package :custom)))
+            (format ":custom %s\n" (string-join (mapcar (lambda (part) (plist-get part :body)) custom))))
+
           ")"))
 
 (defun scripture-build-package (file package-name)
