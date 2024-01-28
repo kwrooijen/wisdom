@@ -4,6 +4,7 @@
 ;;
 
 (require 'cl-lib)
+(require 'ob-core)
 
 ;;; Code:
 
@@ -20,6 +21,16 @@
 The keywords are case sensitive. If the tag ends with an
 underscore, it will be replaced with a asterisk."
   :type 'list
+  :group 'scripture)
+
+(defcustom scripture-output-directory "~/.emacs.d/scripture"
+  "Directory where the tangled Elisp files are stored."
+  :type 'string
+  :group 'scripture)
+
+(defcustom scripture-org-directory "~/.emacs.d/org"
+  "Directory where the Org files are stored."
+  :type 'string
   :group 'scripture)
 
 (defun scripture-find-property (property)
@@ -267,16 +278,6 @@ ELEMENT is the org element of the source block."
                 (push (scripture-wrap-in-condition file `(:body ,body :line ,line))
                       results))))))
       (mapconcat 'identity (reverse results) "\n"))))
-
-(defcustom scripture-output-directory "~/.emacs.d/scripture"
-  "Directory where the tangled Elisp files are stored."
-  :type 'string
-  :group 'scripture)
-
-(defcustom scripture-org-directory "~/.emacs.d/org"
-  "Directory where the Org files are stored."
-  :type 'string
-  :group 'scripture)
 
 (defun scripture-output-file-name (file)
   "Return the name of the output Elisp file for FILE."
