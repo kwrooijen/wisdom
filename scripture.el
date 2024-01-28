@@ -58,13 +58,15 @@ underscore, it will be replaced with a asterisk."
   "Find a `use-package' after in the current Org element or any ancestor element."
   ;; Properties are symbols. Meaning (evil) is also a
   ;; symbol. Therefore we need to convert it to a string and read it.
-  (read (symbol-name (scripture-find-property :AFTER))))
+  (when-let ((after (scripture-find-property :AFTER)))
+    (prin1-to-string (read (symbol-name after)))))
 
 (defun scripture-find-straight ()
   "Find a `use-package' straight in the current Org element or any ancestor element."
   ;; Properties are symbols. Meaning (evil) is also a
   ;; symbol. Therefore we need to convert it to a string and read it.
-  (read (symbol-name (scripture-find-property :STRAIGHT))))
+  (when-let ((straight (scripture-find-property :STRAIGHT)))
+    (prin1-to-string (read (symbol-name straight)))))
 
 (defun scripture-find-keyword ()
   "Find a `use-package' keyword in the current Org element or any ancestor element."
@@ -327,7 +329,8 @@ All files will be outputted to `scripture-output-directory'."
 
 (defun scripture-load-file (file)
   "Load FILE."
-  (load file))
+  (let ((inhibit-message t))
+    (load file nil t)))
 
 (defun scripture-load-directory ()
   "Load all Elisp files in `scripture-output-directory'. "
@@ -405,5 +408,7 @@ OPTS is a plist with the following keys:
     (remove-hook 'after-save-hook 'scripture-preview t)))
 
 (provide 'scripture)
+
+;; TODO Add "push" to loading blocks / files so have an indicator that they're loaded.
 
 ;;; scripture.el ends here
