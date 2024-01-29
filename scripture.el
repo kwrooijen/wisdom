@@ -73,8 +73,7 @@ underscore, it will be replaced with a asterisk."
     (prin1-to-string (read (symbol-name after)))))
 
 (defun scripture-find-straight ()
-  "Find a `use-package' straight in the current Org element or any
-ancestor element."
+  "Find a `use-package' straight in the current Org element or any ancestor element."
   ;; Properties are symbols. Meaning (evil) is also a
   ;; symbol. Therefore we need to convert it to a string and read it.
   (when-let ((straight (scripture-find-property :STRAIGHT)))
@@ -344,7 +343,7 @@ All files will be outputted to `scripture-output-directory'."
 (defun scripture-load-file (file)
   "Load FILE."
   (let ((inhibit-message t))
-    (load file nil t)))
+    (load (expand-file-name file) nil t)))
 
 (defun scripture-load-directory ()
   "Load all Elisp files in `scripture-output-directory'. "
