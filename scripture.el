@@ -33,6 +33,12 @@ underscore, it will be replaced with a asterisk."
   :type 'string
   :group 'scripture)
 
+(defcustom scripture-force-compile nil
+  "Force compilation of Org files, even if the Elisp file is newer
+than the Org file."
+  :type 'boolean
+  :group 'scripture)
+
 (defun scripture-find-property (property)
   "Find PROPERTY in the current Org element or any ancestor element."
   (save-excursion
@@ -293,10 +299,13 @@ ELEMENT is the org element of the source block."
 
 (defun scripture-output-file-name (file)
   "Return the name of the output Elisp file for FILE."
-  (if (string-prefix-p scripture-org-directory file)
-      (concat (file-name-as-directory scripture-output-directory)
-              (file-name-sans-extension (substring file (length scripture-org-directory)))
-              ".el")
+  (if (string-prefix-p
+       (expand-file-name scripture-org-directory)
+       (expand-file-name file))
+      (expand-file-name
+       (concat (file-name-as-directory (expand-file-name scripture-output-directory))
+               (file-name-sans-extension (substring file (length (expand-file-name scripture-org-directory))))
+               ".el"))
     (error "File is not in scripture-org-directory")))
 
 (defun scripture-compile-file (file)
@@ -305,11 +314,12 @@ FILE is an Org file.
 The output Elisp file is stored in `scripture-output-directory'."
   (unless (file-exists-p file)
     (error "File to tangle does not exist: %s" file))
-  (unless (file-exists-p scripture-output-directory)
-    (make-directory scripture-output-directory))
+  (unless (file-exists-p (expand-file-name scripture-output-directory))
+    (make-directory (expand-file-name scripture-output-directory)))
   (let ((output-file (scripture-output-file-name file)))
     (make-directory (file-name-directory output-file) t)
-    (when (file-newer-than-file-p file output-file)
+    (when (or scripture-force-compile
+              (file-newer-than-file-p file output-file))
       (message "Scripture: Compiling %s" file)
       (let* ((scripture-packages nil)
              (source  (scripture-execute-org-src-blocks-and-capture-results file))
@@ -335,7 +345,7 @@ The files are sorted by priority."
   "Compile all Org files in `scripture-org-directory' to Elisp.
 All files will be outputted to `scripture-output-directory'."
   (let ((compiled '()))
-    (dolist (file (scripture-get-files "^[^#]*\\.org$" scripture-org-directory))
+    (dolist (file (scripture-get-files "^[^#]*\\.org$" (expand-file-name scripture-org-directory)))
       (when-let ((output-file (scripture-compile-file file)))
         (push output-file compiled)))
     compiled))
@@ -343,13 +353,15 @@ All files will be outputted to `scripture-output-directory'."
 (defun scripture-load-file (file)
   "Load FILE."
   (let ((inhibit-message t))
-    (load (expand-file-name file) nil t)))
+    (if (load (expand-file-name file) nil t)
+        (message "Scripture: Loaded %s" file)
+      (message "Scripture: Failed to load %s" file))))
 
 (defun scripture-load-directory ()
   "Load all Elisp files in `scripture-output-directory'. "
   (let ((initial-gc-cons-threshold gc-cons-threshold))
     (setq gc-cons-threshold (* 1024 1024 100))
-    (dolist (file (scripture-get-files "^[^#]*\\.el$" scripture-output-directory))
+    (dolist (file (scripture-get-files "^[^#]*\\.el$" (expand-file-name scripture-output-directory)))
       (scripture-load-file file))
     (setq gc-cons-threshold initial-gc-cons-threshold)))
 
@@ -358,6 +370,13 @@ All files will be outputted to `scripture-output-directory'."
   (interactive)
   (dolist (compiled-file (scripture-compile-directory))
     (scripture-load-file compiled-file)))
+
+(defun scripture-reload-current-buffer ()
+  "Compile and load current Org file."
+  (interactive)
+  (let ((scripture-force-compile t))
+    (when-let ((compiled-file (scripture-compile-file (buffer-file-name (current-buffer)))))
+      (scripture-load-file compiled-file))))
 
 (defun scripture-preview ()
   "Compile the current buffer and display the result in *scripture preview*."
