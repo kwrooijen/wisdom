@@ -85,6 +85,13 @@ than the Org file."
   (when-let ((straight (scripture-find-property :STRAIGHT)))
     (prin1-to-string (read (symbol-name straight)))))
 
+(defun scripture-find-defer ()
+  "Find a `use-package' defer in the current Org element or any ancestor element."
+  ;; Properties are symbols. Meaning (evil) is also a
+  ;; symbol. Therefore we need to convert it to a string and read it.
+  (when-let ((defer (scripture-find-property :DEFER)))
+    (prin1-to-string (read (symbol-name defer)))))
+
 (defun scripture-find-requires ()
   "Find a `use-package' straight in the current Org element or any ancestor element."
   ;; Properties are symbols. Meaning (evil) is also a
@@ -188,6 +195,8 @@ FILE is the file name of the Org file."
   (concat (format "(use-package %s\n" package-name)
           (when-let ((straight (plist-get (car (plist-get package :straight)) :body)))
             (format ":straight %s\n" straight))
+          (when-let ((defer (plist-get (car (plist-get package :defer)) :body)))
+            (format ":defer %s\n" defer))
           (when-let ((requires (plist-get (car (plist-get package :requires)) :body)))
             (format ":requires %s\n" requires))
           (when-let ((after (plist-get (car (plist-get package :after)) :body)))
@@ -282,6 +291,9 @@ ELEMENT is the org element of the source block."
            (when-let ((package-name (scripture-find-package))
                       (straight (scripture-find-straight)))
              (put-package-parameter package-name :straight `((:body ,straight :line ,line))))
+           (when-let ((package-name (scripture-find-package))
+                      (defer (scripture-find-defer)))
+             (put-package-parameter package-name :defer `((:body ,defer :line ,line))))
            (when-let ((package-name (scripture-find-package))
                       (requires (scripture-find-requires)))
              (put-package-parameter package-name :requires `((:body ,requires :line ,line)))))))
