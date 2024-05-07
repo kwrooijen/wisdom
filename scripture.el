@@ -129,7 +129,7 @@ If no priority is set, return 10."
   "Return the lexical-binding of an org FILE.
 If no lexical-binding is set, return t."
   (let ((lexical-binding (alist-get 'lexical_binding (scripture-file-properties file) "t")))
-    (if (not (string= lexical-binding "nil"))
+    (if (string= lexical-binding "nil")
         nil
       t)))
 
