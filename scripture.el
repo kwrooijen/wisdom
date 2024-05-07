@@ -337,6 +337,7 @@ The output Elisp file is stored in `scripture-output-directory'."
              (source  (scripture-execute-org-src-blocks-and-capture-results file))
              (output (concat source "\n" (scripture-build-packages file))))
         (with-temp-file output-file
+          (insert ";;; -*- lexical-binding: t -*-")
           (dolist (property (scripture-file-properties file))
             (insert (format ";; #+%s: %s\n\n"
                             (upcase (symbol-name (car property)))
