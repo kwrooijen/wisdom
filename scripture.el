@@ -111,9 +111,7 @@ than the Org file."
     (org-mode)
     (let (properties)
       (goto-char (point-min))
-      (while (re-search-forward
-"^\\(?:;;[ \t]*\\)?#\\+\\(\\w+\\):[ \t]*\\(.*\\)$"
-nil t)
+      (while (re-search-forward "^\\(?:;;[ \t]*\\)?#\\+\\([A-Za-z0-9_]+\\):[ \t]*\\(.*\\)$" nil t)
         (let ((key (intern (downcase (match-string 1))))
               (value (match-string 2)))
           (push (cons key value) properties)))
@@ -126,6 +124,14 @@ If no priority is set, return 10."
     (if (string-match-p "^[0-9]+$" priority)
         (string-to-number priority)
       10)))
+
+(defun scripture-file-lexical-binding (file)
+  "Return the lexical-binding of an org FILE.
+If no lexical-binding is set, return t."
+  (let ((lexical-binding (alist-get 'lexical_binding (scripture-file-properties file) "t")))
+    (if (not (string= lexical-binding "nil"))
+        nil
+      t)))
 
 (defun scripture-get-use-package-package ()
   "Return the package name and parameter of a `use-package' call.
@@ -337,7 +343,8 @@ The output Elisp file is stored in `scripture-output-directory'."
              (source  (scripture-execute-org-src-blocks-and-capture-results file))
              (output (concat source "\n" (scripture-build-packages file))))
         (with-temp-file output-file
-          (insert ";;; -*- lexical-binding: t -*-\n")
+          (when (scripture-file-lexical-binding file)
+            (insert ";;; -*- lexical-binding: t -*-\n"))
           (dolist (property (scripture-file-properties file))
             (insert (format ";; #+%s: %s\n\n"
                             (upcase (symbol-name (car property)))
