@@ -1,4 +1,4 @@
-;;; scripture.el --- Managed Emacs configuration through org files
+;;; wisdom.el --- Managed Emacs configuration through org files
 
 ;;; Commentary:
 ;;
@@ -8,38 +8,38 @@
 
 ;;; Code:
 
-(defvar scripture-packages '()
+(defvar wisdom-packages '()
   "List of packages that should be installed.")
 
-(defcustom scripture-wrap-statements-in-condition t "Wrap code in condition statements."
+(defcustom wisdom-wrap-statements-in-condition t "Wrap code in condition statements."
   :type 'boolean
-  :group 'scripture)
+  :group 'wisdom)
 
-(defcustom scripture-use-package-keywords
+(defcustom wisdom-use-package-keywords
   '("after" "straight" "config" "init" "bind" "bind_" "hook" "general" "custom")
   "List of `use-package' keywords that can be used.
 The keywords are case sensitive. If the tag ends with an
 underscore, it will be replaced with a asterisk."
   :type 'list
-  :group 'scripture)
+  :group 'wisdom)
 
-(defcustom scripture-output-directory "~/.emacs.d/scripture"
+(defcustom wisdom-output-directory "~/.emacs.d/wisdom"
   "Directory where the tangled Elisp files are stored."
   :type 'string
-  :group 'scripture)
+  :group 'wisdom)
 
-(defcustom scripture-org-directory "~/.emacs.d/org"
+(defcustom wisdom-org-directory "~/.emacs.d/org"
   "Directory where the Org files are stored."
   :type 'string
-  :group 'scripture)
+  :group 'wisdom)
 
-(defcustom scripture-force-compile nil
+(defcustom wisdom-force-compile nil
   "Force compilation of Org files, even if the Elisp file is newer
 than the Org file."
   :type 'boolean
-  :group 'scripture)
+  :group 'wisdom)
 
-(defun scripture-find-property (property)
+(defun wisdom-find-property (property)
   "Find PROPERTY in the current Org element or any ancestor element."
   (save-excursion
     (condition-case nil
@@ -49,7 +49,7 @@ than the Org file."
           (intern (org-element-property property (org-element-context))))
       (error nil))))
 
-(defun scripture-find-tags ()
+(defun wisdom-find-tags ()
   "Find tags in the current Org element or any ancestor element."
   (save-excursion
     (condition-case error
@@ -59,52 +59,52 @@ than the Org file."
           (org-element-property :tags (org-element-lineage (org-element-context) '(headline) t)))
       (error nil))))
 
-(defun scripture-find-tag ()
+(defun wisdom-find-tag ()
   "Find a `use-package' tag in the current Org element or any ancestor element."
-  (let* ((keywords scripture-use-package-keywords)
-         (tag (car (seq-filter (lambda (tag) (member tag keywords)) (scripture-find-tags)))))
+  (let* ((keywords wisdom-use-package-keywords)
+         (tag (car (seq-filter (lambda (tag) (member tag keywords)) (wisdom-find-tags)))))
     (when tag
       (replace-regexp-in-string "_" "-"
                                 (replace-regexp-in-string "_$" "*" tag)))))
 
-(defun scripture-find-package ()
+(defun wisdom-find-package ()
   "Find a `use-package' package in the current Org element or any ancestor element."
-  (scripture-find-property :PACKAGE))
+  (wisdom-find-property :PACKAGE))
 
-(defun scripture-find-after ()
+(defun wisdom-find-after ()
   "Find a `use-package' after in the current Org element or any ancestor element."
   ;; Properties are symbols. Meaning (evil) is also a
   ;; symbol. Therefore we need to convert it to a string and read it.
-  (when-let ((after (scripture-find-property :AFTER)))
+  (when-let ((after (wisdom-find-property :AFTER)))
     (prin1-to-string (read (symbol-name after)))))
 
-(defun scripture-find-straight ()
+(defun wisdom-find-straight ()
   "Find a `use-package' straight in the current Org element or any ancestor element."
   ;; Properties are symbols. Meaning (evil) is also a
   ;; symbol. Therefore we need to convert it to a string and read it.
-  (when-let ((straight (scripture-find-property :STRAIGHT)))
+  (when-let ((straight (wisdom-find-property :STRAIGHT)))
     (prin1-to-string (read (symbol-name straight)))))
 
-(defun scripture-find-defer ()
+(defun wisdom-find-defer ()
   "Find a `use-package' defer in the current Org element or any ancestor element."
   ;; Properties are symbols. Meaning (evil) is also a
   ;; symbol. Therefore we need to convert it to a string and read it.
-  (when-let ((defer (scripture-find-property :DEFER)))
+  (when-let ((defer (wisdom-find-property :DEFER)))
     (prin1-to-string (read (symbol-name defer)))))
 
-(defun scripture-find-requires ()
+(defun wisdom-find-requires ()
   "Find a `use-package' straight in the current Org element or any ancestor element."
   ;; Properties are symbols. Meaning (evil) is also a
   ;; symbol. Therefore we need to convert it to a string and read it.
-  (when-let ((requires (scripture-find-property :REQUIRES)))
+  (when-let ((requires (wisdom-find-property :REQUIRES)))
     (prin1-to-string (read (symbol-name requires)))))
 
-(defun scripture-find-keyword ()
+(defun wisdom-find-keyword ()
   "Find a `use-package' keyword in the current Org element or any ancestor element."
-  (when-let ((keyword (scripture-find-property :KEYWORD)))
+  (when-let ((keyword (wisdom-find-property :KEYWORD)))
     (replace-regexp-in-string "^:" "" (symbol-name keyword))))
 
-(defun scripture-file-properties (file)
+(defun wisdom-file-properties (file)
   "Return all properties from an org FILE."
   (with-temp-buffer
     (insert-file-contents file)
@@ -117,62 +117,64 @@ than the Org file."
           (push (cons key value) properties)))
       properties)))
 
-(defun scripture-file-priority (file)
+(defun wisdom-file-priority (file)
   "Return the priority of an org FILE.
 If no priority is set, return 10."
-  (let ((priority (alist-get 'priority (scripture-file-properties file) "10")))
+  (let ((priority (alist-get 'priority (wisdom-file-properties file) "10")))
     (if (string-match-p "^[0-9]+$" priority)
         (string-to-number priority)
       10)))
 
-(defun scripture-file-lexical-binding (file)
+(defun wisdom-file-lexical-binding (file)
   "Return the lexical-binding of an org FILE.
 If no lexical-binding is set, return t."
-  (let ((lexical-binding (alist-get 'lexical_binding (scripture-file-properties file) "t")))
+  (let ((lexical-binding (alist-get 'lexical_binding (wisdom-file-properties file) "t")))
     (if (string= lexical-binding "nil")
         nil
       t)))
 
-(defun scripture-get-use-package-package ()
+(defun wisdom-get-use-package-package ()
   "Return the package name and parameter of a `use-package' call.
 Specified in the org babel header arguments PARAMS."
-  (when-let ((package (scripture-find-package))
-             (keyword (or (scripture-find-keyword)
-                          (scripture-find-tag))))
+  (when-let ((package (wisdom-find-package))
+             (keyword (or (wisdom-find-keyword)
+                          (wisdom-find-tag))))
     (list package keyword)))
 
-(defun scripture-safe-read (string file &optional line)
+(defun wisdom-safe-read (string file &optional line)
   "Read STRING and return the result.
 If STRING is not a valid Elisp form, return nil.
 FILE is the file name of the Org file.
 LINE is the line number of the Org file.
 If read fails, display a warning."
   (condition-case err
+      ;; TODO The following expression does not fail. Even though there is a syntax error.
+      ;; (read "(progn (1)) hello)") ;;=> (progn (1))
       (read string)
     (error
      (progn
        (display-warning
-        'scripture
+        'wisdom
         (if line
             (format "failed to read body of %s:%s" file line)
           (format "failed to read body of %s" file))
         :error)
        nil))))
 
-(defun scripture-wrap-in-condition (file part)
+(defun wisdom-wrap-in-condition (file part)
   "Wrap PART in a `condition-case' form.
 FILE is the file name of the Org file."
   (let* ((body (plist-get part :body))
          (line (plist-get part :line))
-         (expression (scripture-safe-read (format "(progn %s)" body) file line)))
+         (expression (wisdom-safe-read (format "(progn %s)" body) file line)))
     (pp-to-string
-     (if scripture-wrap-statements-in-condition
+     (if wisdom-wrap-statements-in-condition
          `(condition-case err
               ,expression
             (error
              (progn
                (display-warning
-                'scripture
+                'wisdom
                 (format "Error loading %s:%s - %s"
                         ,(format "%s" file)
                         ,line
@@ -180,7 +182,7 @@ FILE is the file name of the Org file."
                 :error))))
        expression))))
 
-(defun scripture-merge-bodies (file xs)
+(defun wisdom-merge-bodies (file xs)
   "Merge the bodies of a list of `use-package' statements.
 FILE is the file name of the Org file.
 XS is a list of `use-package' statements."
@@ -188,13 +190,13 @@ XS is a list of `use-package' statements."
     (dolist (x xs)
       (let* ((body (plist-get x :body))
              (line (plist-get x :line))
-             (result-body (scripture-safe-read body file line)))
+             (result-body (wisdom-safe-read body file line)))
         (when result-body
           (setq result (append result result-body)))))
     (when result
       (prin1-to-string result))))
 
-(defun scripture-build-package-string (package-name package file)
+(defun wisdom-build-package-string (package-name package file)
   "Build a `use-package' call for PACKAGE-NAME in string format.
 PACKAGE is the package plist.
 FILE is the file name of the Org file."
@@ -207,16 +209,16 @@ FILE is the file name of the Org file."
             (format ":requires %s\n" requires))
           (when-let ((after (plist-get (car (plist-get package :after)) :body)))
             (format ":after %s\n" after))
-          (when-let ((bind* (scripture-merge-bodies file (plist-get package :bind*))))
+          (when-let ((bind* (wisdom-merge-bodies file (plist-get package :bind*))))
             (format ":bind* %s\n" bind*))
-          (when-let ((bind (scripture-merge-bodies file (plist-get package :bind))))
+          (when-let ((bind (wisdom-merge-bodies file (plist-get package :bind))))
             (format ":bind %s\n" bind))
-          (when-let ((hook (scripture-merge-bodies file (plist-get package :hook))))
+          (when-let ((hook (wisdom-merge-bodies file (plist-get package :hook))))
             (format ":hook %s\n" hook))
           (when-let ((init (plist-get package :init)))
-            (format ":init %s\n" (string-join (mapcar (lambda (x) (scripture-wrap-in-condition file x)) init))))
+            (format ":init %s\n" (string-join (mapcar (lambda (x) (wisdom-wrap-in-condition file x)) init))))
           (when-let ((config (plist-get package :config)))
-            (format ":config %s\n" (string-join (mapcar (lambda (x) (scripture-wrap-in-condition file x)) config))))
+            (format ":config %s\n" (string-join (mapcar (lambda (x) (wisdom-wrap-in-condition file x)) config))))
           (when-let ((general (plist-get package :general)))
             (format ":general %s\n" (string-join (mapcar (lambda (part) (plist-get part :body)) general))))
           (when-let ((custom (plist-get package :custom)))
@@ -224,17 +226,17 @@ FILE is the file name of the Org file."
 
           ")"))
 
-(defun scripture-build-package (file package-name)
+(defun wisdom-build-package (file package-name)
   "Build a `use-package' call for PACKAGE-NAME in string format.
 FILE is the file name of the Org file.
 PACKAGE-NAME is the name of the package."
-  (when-let ((package (plist-get scripture-packages package-name)))
+  (when-let ((package (plist-get wisdom-packages package-name)))
     (when (not (equal package-name (intern "nil")))
-      (let ((package-string (scripture-build-package-string package-name package file)))
+      (let ((package-string (wisdom-build-package-string package-name package file)))
         (pp-to-string
-         (scripture-safe-read package-string file))))))
+         (wisdom-safe-read package-string file))))))
 
-(defun scripture-plist-keys (plist)
+(defun wisdom-plist-keys (plist)
   "Return the keys of PLIST as a list."
   (let ((keys '()))
     (while plist
@@ -242,30 +244,30 @@ PACKAGE-NAME is the name of the package."
       (setq plist (cddr plist)))
     (nreverse keys)))
 
-(defun scripture-build-packages (file)
+(defun wisdom-build-packages (file)
   "Build a string of `use-package' statements.
-The resulting contains all all packages in `scripture-packages'.
+The resulting contains all all packages in `wisdom-packages'.
 FILE is the file name of the Org file."
-  (let ((package-names (scripture-plist-keys scripture-packages))
+  (let ((package-names (wisdom-plist-keys wisdom-packages))
         (result ""))
     (dolist (package-name package-names)
-      (setq result (concat result (scripture-build-package file package-name))))
+      (setq result (concat result (wisdom-build-package file package-name))))
     result))
 
 (defun put-package-parameter (package-name parameter value)
-  "Put a parameter in the `scripture-packages' plist.
+  "Put a parameter in the `wisdom-packages' plist.
 PACKAGE-NAME is the name of the package.
 PARAMETER is the parameter to set.
 VALUE is the value to set."
-  (setq scripture-packages
+  (setq wisdom-packages
         (plist-put
-         scripture-packages
+         wisdom-packages
          package-name
-         (plist-put (plist-get scripture-packages package-name)
+         (plist-put (plist-get wisdom-packages package-name)
                     parameter
                     value))))
 
-(defun scripture-add-package (package body element)
+(defun wisdom-add-package (package body element)
   "Execute a block of Use-Package code with org-babel.
 PACKAGE is a list of the package name and parameter.
 BODY is the body of the source block.
@@ -274,12 +276,13 @@ ELEMENT is the org element of the source block."
          (line (line-number-at-pos begin))
          (package-name (car package))
          (package-parameter (intern (concat ":" (car (cdr package)))))
-         (previous-body (plist-get (plist-get scripture-packages package-name) package-parameter))
+         (previous-body (plist-get (plist-get wisdom-packages package-name) package-parameter))
          (value (append previous-body `((:body ,body :line ,line)))))
     (put-package-parameter package-name package-parameter value)
     nil))
 
-(defun scripture-execute-org-src-blocks-and-capture-results (file)
+;; TODO I don't think this executes (anymore). I don't think it should execute.
+(defun wisdom-execute-org-src-blocks-and-capture-results (file)
   "Execute all source blocks in FILE and return the results as a string."
   (with-temp-buffer
     (insert-file-contents file)
@@ -288,64 +291,64 @@ ELEMENT is the org element of the source block."
       (org-map-entries
        (lambda ()
          (let ((line (line-number-at-pos (org-element-property :begin (org-element-context)))))
-           (when-let ((package-name (scripture-find-package))
+           (when-let ((package-name (wisdom-find-package))
                       (package (org-element-property :PACKAGE (org-element-context))))
              (put-package-parameter package-name :package line))
-           (when-let ((package-name (scripture-find-package))
-                      (after (scripture-find-after)))
+           (when-let ((package-name (wisdom-find-package))
+                      (after (wisdom-find-after)))
              (put-package-parameter package-name :after `((:body ,after :line ,line))))
-           (when-let ((package-name (scripture-find-package))
-                      (straight (scripture-find-straight)))
+           (when-let ((package-name (wisdom-find-package))
+                      (straight (wisdom-find-straight)))
              (put-package-parameter package-name :straight `((:body ,straight :line ,line))))
-           (when-let ((package-name (scripture-find-package))
-                      (defer (scripture-find-defer)))
+           (when-let ((package-name (wisdom-find-package))
+                      (defer (wisdom-find-defer)))
              (put-package-parameter package-name :defer `((:body ,defer :line ,line))))
-           (when-let ((package-name (scripture-find-package))
-                      (requires (scripture-find-requires)))
+           (when-let ((package-name (wisdom-find-package))
+                      (requires (wisdom-find-requires)))
              (put-package-parameter package-name :requires `((:body ,requires :line ,line)))))))
       (org-babel-map-src-blocks nil
         (let ((body (org-element-property :value (org-element-context)))
               (line (line-number-at-pos (org-element-property :begin (org-element-context))))
               (language (org-element-property :language (org-element-context))))
           (when (string= language "emacs-lisp")
-            (if-let ((package (scripture-get-use-package-package)))
-                (scripture-add-package package body (org-element-context))
+            (if-let ((package (wisdom-get-use-package-package)))
+                (wisdom-add-package package body (org-element-context))
               (when (stringp body)
-                (push (scripture-wrap-in-condition file `(:body ,body :line ,line))
+                (push (wisdom-wrap-in-condition file `(:body ,body :line ,line))
                       results))))))
       (mapconcat 'identity (reverse results) "\n"))))
 
-(defun scripture-output-file-name (file)
+(defun wisdom-output-file-name (file)
   "Return the name of the output Elisp file for FILE."
   (if (string-prefix-p
-       (expand-file-name scripture-org-directory)
+       (expand-file-name wisdom-org-directory)
        (expand-file-name file))
       (expand-file-name
-       (concat (file-name-as-directory (expand-file-name scripture-output-directory))
-               (file-name-sans-extension (substring file (length (expand-file-name scripture-org-directory))))
+       (concat (file-name-as-directory (expand-file-name wisdom-output-directory))
+               (file-name-sans-extension (substring file (length (expand-file-name wisdom-org-directory))))
                ".el"))
-    (error "File is not in scripture-org-directory")))
+    (error "File is not in wisdom-org-directory")))
 
-(defun scripture-compile-file (file)
+(defun wisdom-compile-file (file)
   "Compile FILE to Elisp.
 FILE is an Org file.
-The output Elisp file is stored in `scripture-output-directory'."
+The output Elisp file is stored in `wisdom-output-directory'."
   (unless (file-exists-p file)
     (error "File to tangle does not exist: %s" file))
-  (unless (file-exists-p (expand-file-name scripture-output-directory))
-    (make-directory (expand-file-name scripture-output-directory)))
-  (let ((output-file (scripture-output-file-name file)))
+  (unless (file-exists-p (expand-file-name wisdom-output-directory))
+    (make-directory (expand-file-name wisdom-output-directory)))
+  (let ((output-file (wisdom-output-file-name file)))
     (make-directory (file-name-directory output-file) t)
-    (when (or scripture-force-compile
+    (when (or wisdom-force-compile
               (file-newer-than-file-p file output-file))
-      (message "Scripture: Compiling %s" file)
-      (let* ((scripture-packages nil)
-             (source  (scripture-execute-org-src-blocks-and-capture-results file))
-             (output (concat source "\n" (scripture-build-packages file))))
+      (message "Wisdom: Compiling %s" file)
+      (let* ((wisdom-packages nil)
+             (source  (wisdom-execute-org-src-blocks-and-capture-results file))
+             (output (concat source "\n" (wisdom-build-packages file))))
         (with-temp-file output-file
-          (when (scripture-file-lexical-binding file)
+          (when (wisdom-file-lexical-binding file)
             (insert ";;; -*- lexical-binding: t -*-\n"))
-          (dolist (property (scripture-file-properties file))
+          (dolist (property (wisdom-file-properties file))
             (insert (format ";; #+%s: %s\n\n"
                             (upcase (symbol-name (car property)))
                             (cdr property))))
@@ -354,62 +357,76 @@ The output Elisp file is stored in `scripture-output-directory'."
         (set-file-times output-file))
       output-file)))
 
-(defun scripture-get-files (extension directory)
+(defun wisdom-get-files (extension directory)
   "Return all files with EXTENSION in DIRECTORY.
 The files are sorted by priority."
   (let* ((files (directory-files-recursively directory extension)))
-    (sort files (lambda (a b) (< (scripture-file-priority a)
-                                 (scripture-file-priority b))))))
+    (sort files (lambda (a b) (< (wisdom-file-priority a)
+                                 (wisdom-file-priority b))))))
 
-(defun scripture-compile-directory ()
-  "Compile all Org files in `scripture-org-directory' to Elisp.
-All files will be outputted to `scripture-output-directory'."
+(defun wisdom-compile-directory ()
+  "Compile all Org files in `wisdom-org-directory' to Elisp.
+All files will be outputted to `wisdom-output-directory'."
   (let ((compiled '()))
-    (dolist (file (scripture-get-files "^[^#]*\\.org$" (expand-file-name scripture-org-directory)))
-      (when-let ((output-file (scripture-compile-file file)))
+    (dolist (file (wisdom-get-files "^[^#]*\\.org$" (expand-file-name wisdom-org-directory)))
+      (when-let ((output-file (wisdom-compile-file file)))
         (push output-file compiled)))
     compiled))
 
-(defun scripture-load-file (file)
+(defun wisdom-aggregate-directory (output-file)
+  "Aggregate all Org files in `wisdom-org-directory'.
+All file contents will be aggregated and outputted to OUTPUT-FILE."
+  (let ((result ""))
+    (dolist (file (wisdom-get-files "^[^#]*\\.org$" (expand-file-name wisdom-org-directory)))
+      (setq result (concat result (with-temp-buffer
+                                    ;; (insert "\n\n--- " (string-replace
+                                    ;;                     (file-name-directory (expand-file-name wisdom-org-directory))
+                                    ;;                     ""
+                                    ;;                     (expand-file-name file)) " ---\n\n\n\n")
+                                    (insert-file-contents file) (buffer-string)) "\n")))
+    (with-temp-file output-file
+      (insert result))))
+
+(defun wisdom-load-file (file)
   "Load FILE."
   (let ((inhibit-message t))
     (if (load (expand-file-name file) nil t)
-        (message "Scripture: Loaded %s" file)
-      (message "Scripture: Failed to load %s" file))))
+        (message "Wisdom: Loaded %s" file)
+      (message "Wisdom: Failed to load %s" file))))
 
-(defun scripture-load-directory ()
-  "Load all Elisp files in `scripture-output-directory'. "
+(defun wisdom-load-directory ()
+  "Load all Elisp files in `wisdom-output-directory'. "
   (let ((initial-gc-cons-threshold gc-cons-threshold))
     (setq gc-cons-threshold (* 1024 1024 100))
-    (dolist (file (scripture-get-files "^[^#]*\\.el$" (expand-file-name scripture-output-directory)))
-      (scripture-load-file file))
+    (dolist (file (wisdom-get-files "^[^#]*\\.el$" (expand-file-name wisdom-output-directory)))
+      (wisdom-load-file file))
     (setq gc-cons-threshold initial-gc-cons-threshold)))
 
-(defun scripture-reload ()
+(defun wisdom-reload ()
   "Compile and load all Org files."
   (interactive)
-  (dolist (compiled-file (scripture-compile-directory))
-    (scripture-load-file compiled-file)))
+  (dolist (compiled-file (wisdom-compile-directory))
+    (wisdom-load-file compiled-file)))
 
-(defun scripture-reload-current-buffer ()
+(defun wisdom-reload-current-buffer ()
   "Compile and load current Org file."
   (interactive)
-  (let ((scripture-force-compile t))
-    (when-let ((compiled-file (scripture-compile-file (buffer-file-name (current-buffer)))))
-      (scripture-load-file compiled-file))))
+  (let ((wisdom-force-compile t))
+    (when-let ((compiled-file (wisdom-compile-file (buffer-file-name (current-buffer)))))
+      (wisdom-load-file compiled-file))))
 
-(defun scripture-preview ()
-  "Compile the current buffer and display the result in *scripture preview*."
+(defun wisdom-preview ()
+  "Compile the current buffer and display the result in *wisdom preview*."
   (interactive)
-  (let* ((buffer (get-buffer-create "*scripture preview*"))
+  (let* ((buffer (get-buffer-create "*wisdom preview*"))
          ;; We display the buffer first, then compile. If there is an
          ;; error it will not be overruled by the preview buffer.
          (_ (display-buffer buffer))
-         (scripture-wrap-statements-in-condition nil)
+         (wisdom-wrap-statements-in-condition nil)
          (file (buffer-file-name (current-buffer)))
-         (scripture-packages nil)
-         (source (scripture-execute-org-src-blocks-and-capture-results file))
-         (output (concat source "\n" (scripture-build-packages file))))
+         (wisdom-packages nil)
+         (source (wisdom-execute-org-src-blocks-and-capture-results file))
+         (output (concat source "\n" (wisdom-build-packages file))))
     (with-current-buffer buffer
       (emacs-lisp-mode)
       (read-only-mode 1)
@@ -417,15 +434,22 @@ All files will be outputted to `scripture-output-directory'."
         (let ((inhibit-read-only t))
           (replace-region-contents (point-min) (point-max) (lambda () output)))))))
 
-(define-minor-mode scripture-preview-mode
+(define-minor-mode wisdom-preview-mode
   "Preview the current buffer as elisp."
-  :lighter " scripture-preview"
-  (if scripture-preview-mode
-      (add-hook 'after-save-hook 'scripture-preview nil t)
-    (remove-hook 'after-save-hook 'scripture-preview t)))
+  :lighter " wisdom-preview"
+  (if wisdom-preview-mode
+      (add-hook 'after-save-hook 'wisdom-preview nil t)
+    (remove-hook 'after-save-hook 'wisdom-preview t)))
 
-(provide 'scripture)
+(provide 'wisdom)
 
+;; TODO add try/catch to entire org files
 ;; TODO Add "push" to loading blocks / files so have an indicator that they're loaded.
+;; TODO add #+DISABLED: t
+;; TODO Add :ignore to src blocks
+;; TODO rename: wisdom
+;; TODO Aggregate all org files and create README
+;; TODO allow fetching / compiling remote org files
 
-;;; scripture.el ends here
+
+;;; wisdom.el ends here
