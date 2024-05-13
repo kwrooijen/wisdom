@@ -447,7 +447,6 @@ All file contents will be aggregated and outputted to OUTPUT-FILE."
 ;; TODO Add "push" to loading blocks / files so have an indicator that they're loaded.
 ;; TODO add #+DISABLED: t
 ;; TODO Add :ignore to src blocks
-;; TODO rename: wisdom
 ;; TODO Aggregate all org files and create README
 ;; TODO allow fetching / compiling remote org files
 
