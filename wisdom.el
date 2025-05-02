@@ -281,9 +281,8 @@ ELEMENT is the org element of the source block."
     (put-package-parameter package-name package-parameter value)
     nil))
 
-;; TODO I don't think this executes (anymore). I don't think it should execute.
-(defun wisdom-execute-org-src-blocks-and-capture-results (file)
-  "Execute all source blocks in FILE and return the results as a string."
+(defun wisdom-concatenate-source-blocks (file)
+  "Concatenate all source blocks in FILE and return the results as a string."
   (with-temp-buffer
     (insert-file-contents file)
     (org-mode)
@@ -343,7 +342,7 @@ The output Elisp file is stored in `wisdom-output-directory'."
               (file-newer-than-file-p file output-file))
       (message "Wisdom: Compiling %s" file)
       (let* ((wisdom-packages nil)
-             (source  (wisdom-execute-org-src-blocks-and-capture-results file))
+             (source  (wisdom-concatenate-source-blocks file))
              (output (concat source "\n" (wisdom-build-packages file))))
         (with-temp-file output-file
           (when (wisdom-file-lexical-binding file)
@@ -425,7 +424,7 @@ All file contents will be aggregated and outputted to OUTPUT-FILE."
          (wisdom-wrap-statements-in-condition nil)
          (file (buffer-file-name (current-buffer)))
          (wisdom-packages nil)
-         (source (wisdom-execute-org-src-blocks-and-capture-results file))
+         (source (wisdom-concatenate-source-blocks file))
          (output (concat source "\n" (wisdom-build-packages file))))
     (with-current-buffer buffer
       (emacs-lisp-mode)
@@ -449,6 +448,5 @@ All file contents will be aggregated and outputted to OUTPUT-FILE."
 ;; TODO Add :ignore to src blocks
 ;; TODO Aggregate all org files and create README
 ;; TODO allow fetching / compiling remote org files
-
 
 ;;; wisdom.el ends here
