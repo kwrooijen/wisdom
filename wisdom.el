@@ -5,11 +5,15 @@
 
 (require 'cl-lib)
 (require 'ob-core)
+(require 'url)
 
 ;;; Code:
 
 (defvar wisdom-packages '()
   "List of packages that should be installed.")
+
+(defvar wisdom-compiling-remote nil
+  "Whether we are compiling a remote file.")
 
 (defcustom wisdom-wrap-statements-in-condition t "Wrap code in condition statements."
   :type 'boolean
@@ -33,11 +37,34 @@ underscore, it will be replaced with a asterisk."
   :type 'string
   :group 'wisdom)
 
+(defcustom wisdom-remote-output-directory "~/.emacs.d/remote-wisdom"
+  "Directory where the remote tangled Elisp files are stored."
+  :type 'string
+  :group 'wisdom)
+
+(defcustom wisdom-remote-org-directory "~/.emacs.d/remote-org"
+  "Directory where the remote Org files are stored."
+  :type 'string
+  :group 'wisdom)
+
 (defcustom wisdom-force-compile nil
   "Force compilation of Org files, even if the Elisp file is newer
 than the Org file."
   :type 'boolean
   :group 'wisdom)
+
+
+(defun wisdom-get-org-directory ()
+  "Return the Org directory."
+  (if wisdom-compiling-remote
+      (expand-file-name wisdom-remote-org-directory)
+    (expand-file-name wisdom-org-directory)))
+
+(defun wisdom-get-output-directory ()
+  "Return the output directory."
+  (if wisdom-compiling-remote
+      (expand-file-name wisdom-remote-output-directory)
+    (expand-file-name wisdom-output-directory)))
 
 (defun wisdom-find-property (property)
   "Find PROPERTY in the current Org element or any ancestor element."
@@ -124,6 +151,13 @@ If no priority is set, return 10."
     (if (string-match-p "^[0-9]+$" priority)
         (string-to-number priority)
       10)))
+
+(defun wisdom-file-remote (file)
+  "Return the remote property of an org FILE."
+  (let ((remote (alist-get 'remote (wisdom-file-properties file))))
+    ;; Read string as elisp list
+    (when remote
+      (read remote))))
 
 (defun wisdom-file-lexical-binding (file)
   "Return the lexical-binding of an org FILE.
@@ -320,11 +354,11 @@ ELEMENT is the org element of the source block."
 (defun wisdom-output-file-name (file)
   "Return the name of the output Elisp file for FILE."
   (if (string-prefix-p
-       (expand-file-name wisdom-org-directory)
+       (wisdom-get-org-directory)
        (expand-file-name file))
       (expand-file-name
-       (concat (file-name-as-directory (expand-file-name wisdom-output-directory))
-               (file-name-sans-extension (substring file (length (expand-file-name wisdom-org-directory))))
+       (concat (file-name-as-directory (wisdom-get-output-directory))
+               (file-name-sans-extension (substring file (length (wisdom-get-org-directory))))
                ".el"))
     (error "File is not in wisdom-org-directory")))
 
@@ -334,8 +368,8 @@ FILE is an Org file.
 The output Elisp file is stored in `wisdom-output-directory'."
   (unless (file-exists-p file)
     (error "File to tangle does not exist: %s" file))
-  (unless (file-exists-p (expand-file-name wisdom-output-directory))
-    (make-directory (expand-file-name wisdom-output-directory)))
+  (unless (file-exists-p (wisdom-get-output-directory))
+    (make-directory (wisdom-get-output-directory)))
   (let ((output-file (wisdom-output-file-name file)))
     (make-directory (file-name-directory output-file) t)
     (when (or wisdom-force-compile
@@ -343,14 +377,18 @@ The output Elisp file is stored in `wisdom-output-directory'."
       (message "Wisdom: Compiling %s" file)
       (let* ((wisdom-packages nil)
              (source  (wisdom-concatenate-source-blocks file))
+             (remote-file-plist (wisdom-file-remote file))
              (output (concat source "\n" (wisdom-build-packages file))))
         (with-temp-file output-file
-          (when (wisdom-file-lexical-binding file)
-            (insert ";;; -*- lexical-binding: t -*-\n"))
-          (dolist (property (wisdom-file-properties file))
-            (insert (format ";; #+%s: %s\n\n"
-                            (upcase (symbol-name (car property)))
-                            (cdr property))))
+          (when (not wisdom-compiling-remote)
+            (when (wisdom-file-lexical-binding file)
+              (insert ";;; -*- lexical-binding: t -*-\n"))
+            (when remote-file-plist
+              (insert-file-contents (wisdom-remote-plist-to-output-file remote-file-plist)))
+            (dolist (property (wisdom-file-properties file))
+              (insert (format ";; #+%s: %s\n\n"
+                              (upcase (symbol-name (car property)))
+                              (cdr property)))))
           (insert output)))
       (when (file-exists-p output-file)
         (set-file-times output-file))
@@ -363,11 +401,61 @@ The files are sorted by priority."
     (sort files (lambda (a b) (< (wisdom-file-priority a)
                                  (wisdom-file-priority b))))))
 
+(defun wisdom-remote-plist-to-org-file (remote-file-plist)
+  (interactive)
+  (file-name-concat (file-name-as-directory (expand-file-name wisdom-remote-org-directory))
+                    (format "%s" (plist-get remote-file-plist :repo))
+                    (format "%s" (plist-get remote-file-plist :file))))
+
+(defun wisdom-remote-plist-to-output-file (remote-file-plist)
+  (interactive)
+  (file-name-concat (file-name-as-directory (expand-file-name wisdom-remote-output-directory))
+                    (format "%s" (plist-get remote-file-plist :repo))
+                    (concat (file-name-sans-extension (format "%s" (plist-get remote-file-plist :file))) ".el")))
+
+(defun wisdom-url-retrieve-callback (status remote-file-plist)
+  "Callback function for url-retrieve, STATUS contains the request's status."
+  (if (plist-get status :error)
+      (message "Error status code: %s" (car (last (plist-get status :error))))
+    (goto-char url-http-end-of-headers)
+    (let ((response-body (buffer-substring-no-properties (point) (point-max)))
+          (file-path (wisdom-remote-plist-to-org-file remote-file-plist)))
+      (make-directory (file-name-directory file-path) t)
+      (with-temp-file file-path
+        (insert response-body)))))
+
+(defun wisdom-pull-remote-file (remote-file-plist)
+  (interactive)
+  (when (not (file-exists-p (wisdom-remote-plist-to-org-file remote-file-plist)))
+    (let ((host (plist-get remote-file-plist :host))
+          (repo (plist-get remote-file-plist :repo))
+          (branch (plist-get remote-file-plist :branch))
+          (file (plist-get remote-file-plist :file)))
+      (url-retrieve (format "https://raw.githubusercontent.com/%s/refs/heads/%s/%s" repo branch file)
+                    (lambda (status &rest remote-file-plist)
+                      (wisdom-url-retrieve-callback status remote-file-plist))
+                    remote-file-plist))))
+
 (defun wisdom-compile-directory ()
   "Compile all Org files in `wisdom-org-directory' to Elisp.
 All files will be outputted to `wisdom-output-directory'."
+
+  (dolist (file (wisdom-get-files "^[^#]*\\.org$" (wisdom-get-org-directory)))
+    (when (wisdom-file-remote file)
+      (wisdom-pull-remote-file
+       (wisdom-file-remote file))))
+  ;; Compile remote files first
+  (setq wisdom-compiling-remote t)
   (let ((compiled '()))
-    (dolist (file (wisdom-get-files "^[^#]*\\.org$" (expand-file-name wisdom-org-directory)))
+    (dolist (file (wisdom-get-files "^[^#]*\\.org$" (wisdom-get-org-directory)))
+      (when-let ((output-file (wisdom-compile-file file)))
+        (push output-file compiled)))
+    compiled)
+
+  ;; Compile local files
+  (setq wisdom-compiling-remote nil)
+  (let ((compiled '()))
+    (dolist (file (wisdom-get-files "^[^#]*\\.org$" (wisdom-get-org-directory)))
       (when-let ((output-file (wisdom-compile-file file)))
         (push output-file compiled)))
     compiled))
@@ -376,12 +464,8 @@ All files will be outputted to `wisdom-output-directory'."
   "Aggregate all Org files in `wisdom-org-directory'.
 All file contents will be aggregated and outputted to OUTPUT-FILE."
   (let ((result ""))
-    (dolist (file (wisdom-get-files "^[^#]*\\.org$" (expand-file-name wisdom-org-directory)))
+    (dolist (file (wisdom-get-files "^[^#]*\\.org$" (wisdom-get-org-directory)))
       (setq result (concat result (with-temp-buffer
-                                    ;; (insert "\n\n--- " (string-replace
-                                    ;;                     (file-name-directory (expand-file-name wisdom-org-directory))
-                                    ;;                     ""
-                                    ;;                     (expand-file-name file)) " ---\n\n\n\n")
                                     (insert-file-contents file) (buffer-string)) "\n")))
     (with-temp-file output-file
       (insert result))))
@@ -397,7 +481,7 @@ All file contents will be aggregated and outputted to OUTPUT-FILE."
   "Load all Elisp files in `wisdom-output-directory'. "
   (let ((initial-gc-cons-threshold gc-cons-threshold))
     (setq gc-cons-threshold (* 1024 1024 100))
-    (dolist (file (wisdom-get-files "^[^#]*\\.el$" (expand-file-name wisdom-output-directory)))
+    (dolist (file (wisdom-get-files "^[^#]*\\.el$" (wisdom-get-output-directory)))
       (wisdom-load-file file))
     (setq gc-cons-threshold initial-gc-cons-threshold)))
 
@@ -410,7 +494,12 @@ All file contents will be aggregated and outputted to OUTPUT-FILE."
 (defun wisdom-reload-current-buffer ()
   "Compile and load current Org file."
   (interactive)
-  (let ((wisdom-force-compile t))
+  (let ((wisdom-force-compile t)
+        (remote-file-plist (wisdom-file-remote (buffer-file-name (current-buffer)))))
+    (when remote-file-plist
+      (wisdom-pull-remote-file remote-file-plist)
+      (setq wisdom-compiling-remote t)
+      (wisdom-compile-file (wisdom-remote-plist-to-org-file remote-file-plist)))
     (when-let ((compiled-file (wisdom-compile-file (buffer-file-name (current-buffer)))))
       (wisdom-load-file compiled-file))))
 
@@ -446,7 +535,5 @@ All file contents will be aggregated and outputted to OUTPUT-FILE."
 ;; TODO Add "push" to loading blocks / files so have an indicator that they're loaded.
 ;; TODO add #+DISABLED: t
 ;; TODO Add :ignore to src blocks
-;; TODO Aggregate all org files and create README
-;; TODO allow fetching / compiling remote org files
 
 ;;; wisdom.el ends here
