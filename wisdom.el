@@ -53,6 +53,11 @@ than the Org file."
   :type 'boolean
   :group 'wisdom)
 
+(defcustom wisdom-force-download nil
+  "Force download of remote Org files, even if the file already"
+  :type 'boolean
+  :group 'wisdom)
+
 
 (defun wisdom-get-org-directory ()
   "Return the Org directory."
@@ -426,7 +431,11 @@ The files are sorted by priority."
 
 (defun wisdom-pull-remote-file (remote-file-plist)
   (interactive)
-  (when (not (file-exists-p (wisdom-remote-plist-to-org-file remote-file-plist)))
+  (when (or (not (file-exists-p (wisdom-remote-plist-to-org-file remote-file-plist)))
+            wisdom-force-download)
+    (message "Wisdom: Downloading %s:%s"
+             (plist-get remote-file-plist :repo)
+             (plist-get remote-file-plist :file))
     (let ((host (plist-get remote-file-plist :host))
           (repo (plist-get remote-file-plist :repo))
           (branch (plist-get remote-file-plist :branch))
@@ -502,6 +511,14 @@ All file contents will be aggregated and outputted to OUTPUT-FILE."
       (wisdom-compile-file (wisdom-remote-plist-to-org-file remote-file-plist)))
     (when-let ((compiled-file (wisdom-compile-file (buffer-file-name (current-buffer)))))
       (wisdom-load-file compiled-file))))
+
+(defun wisdom-download-all-remote-files ()
+  "Download all remote Org files specified in local Org files."
+  (interactive)
+  (let ((wisdom-force-download t))
+    (dolist (file (wisdom-get-files "^[^#]*\\.org$" (wisdom-get-org-directory)))
+      (when-let ((remote-file-plist (wisdom-file-remote file)))
+        (wisdom-pull-remote-file remote-file-plist)))))
 
 (defun wisdom-preview ()
   "Compile the current buffer and display the result in *wisdom preview*."
