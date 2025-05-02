@@ -56,7 +56,7 @@ By default, Wisdom enables lexical binding for better variable scope
 management. To disable this feature, you can set the `LEXICAL_BINDING`
 option to `nil`.
 
-#+BEGIN_SRC
+#+BEGIN_SRC org
 #+LEXICAL_BINDING: nil
 #+END_SRC
 
@@ -64,7 +64,7 @@ Wisdom loads Org files based on their priority levels. By default, all
 files have a priority level of 10; the lower the number, the higher
 the priority and the earlier it will be loaded.
 
-#+BEGIN_SRC
+#+BEGIN_SRC org
 #+PRIORITY: 2
 #+END_SRC
 
@@ -72,6 +72,6 @@ Pull a remote Org config file into your own Org file. This allows
 using other people's configurations and setups. After you've added a
 remote Org file you can add "finishing touches" in that same file.
 
-#+BEGIN_QUOTE
+#+BEGIN_SRC org
 #+REMOTE: (:host github :repo kwrooijen/test-org :branch master :file key-chord.org)
-#+END_QUOTE
+#+END_SRC
