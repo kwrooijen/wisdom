@@ -436,9 +436,9 @@ The files are sorted by priority."
     (message "Wisdom: Downloading %s:%s"
              (plist-get remote-file-plist :repo)
              (plist-get remote-file-plist :file))
-    (let ((host (plist-get remote-file-plist :host))
+    (let ((host (or (plist-get remote-file-plist :host) "github"))
           (repo (plist-get remote-file-plist :repo))
-          (branch (plist-get remote-file-plist :branch))
+          (branch (or (plist-get remote-file-plist :branch) "master"))
           (file (plist-get remote-file-plist :file)))
       (url-retrieve (format "https://raw.githubusercontent.com/%s/refs/heads/%s/%s" repo branch file)
                     (lambda (status &rest remote-file-plist)
@@ -553,5 +553,6 @@ All file contents will be aggregated and outputted to OUTPUT-FILE."
 ;; TODO add #+DISABLED: t
 ;; TODO Add :ignore to src blocks
 ;; TODO Allow multiple #+REMOTE: in a single org file
+;; TODO Create a lock file for REMOTE dependencies
 
 ;;; wisdom.el ends here

@@ -74,4 +74,5 @@ remote Org file you can add "finishing touches" in that same file.
 
 #+BEGIN_SRC org
 #+REMOTE: (:host github :repo kwrooijen/test-org :branch master :file key-chord.org)
+#+REMOTE: (:repo kwrooijen/test-org :file key-chord.org)
 #+END_SRC
