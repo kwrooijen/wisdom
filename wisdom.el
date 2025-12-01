@@ -454,16 +454,16 @@ All files will be outputted to `wisdom-output-directory'."
       (wisdom-pull-remote-file
        (wisdom-file-remote file))))
   ;; Compile remote files first
-  (setq wisdom-compiling-remote t)
-  (let ((compiled '()))
+  (let ((wisdom-compiling-remote t)
+        (compiled '()))
     (dolist (file (wisdom-get-files "^[^#]*\\.org$" (wisdom-get-org-directory)))
       (when-let ((output-file (wisdom-compile-file file)))
         (push output-file compiled)))
     compiled)
 
   ;; Compile local files
-  (setq wisdom-compiling-remote nil)
-  (let ((compiled '()))
+  (let ((wisdom-compiling-remote nil)
+        (compiled '()))
     (dolist (file (wisdom-get-files "^[^#]*\\.org$" (wisdom-get-org-directory)))
       (when-let ((output-file (wisdom-compile-file file)))
         (push output-file compiled)))
@@ -507,8 +507,8 @@ All file contents will be aggregated and outputted to OUTPUT-FILE."
         (remote-file-plist (wisdom-file-remote (buffer-file-name (current-buffer)))))
     (when remote-file-plist
       (wisdom-pull-remote-file remote-file-plist)
-      (setq wisdom-compiling-remote t)
-      (wisdom-compile-file (wisdom-remote-plist-to-org-file remote-file-plist)))
+      (let ((wisdom-compiling-remote t))
+        (wisdom-compile-file (wisdom-remote-plist-to-org-file remote-file-plist))))
     (when-let ((compiled-file (wisdom-compile-file (buffer-file-name (current-buffer)))))
       (wisdom-load-file compiled-file))))
 
