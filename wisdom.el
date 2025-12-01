@@ -20,7 +20,7 @@
   :group 'wisdom)
 
 (defcustom wisdom-use-package-keywords
-  '("after" "straight" "config" "init" "bind" "bind_" "hook" "general" "custom")
+  '("after" "demand" "straight" "config" "init" "bind" "bind_" "hook" "general" "custom")
   "List of `use-package' keywords that can be used.
 The keywords are case sensitive. If the tag ends with an
 underscore, it will be replaced with a asterisk."
@@ -109,6 +109,13 @@ than the Org file."
   ;; symbol. Therefore we need to convert it to a string and read it.
   (when-let ((after (wisdom-find-property :AFTER)))
     (prin1-to-string (read (symbol-name after)))))
+
+(defun wisdom-find-demand ()
+  "Find a `use-package' demand in the current Org element or any ancestor element."
+  ;; Properties are symbols. Meaning (evil) is also a
+  ;; symbol. Therefore we need to convert it to a string and read it.
+  (when-let ((demand (wisdom-find-property :DEMAND)))
+    (prin1-to-string (read (symbol-name demand)))))
 
 (defun wisdom-find-straight ()
   "Find a `use-package' straight in the current Org element or any ancestor element."
@@ -248,6 +255,8 @@ FILE is the file name of the Org file."
             (format ":requires %s\n" requires))
           (when-let ((after (plist-get (car (plist-get package :after)) :body)))
             (format ":after %s\n" after))
+          (when-let ((demand (plist-get (car (plist-get package :demand)) :body)))
+            (format ":demand %s\n" demand))
           (when-let ((bind* (wisdom-merge-bodies file (plist-get package :bind*))))
             (format ":bind* %s\n" bind*))
           (when-let ((bind (wisdom-merge-bodies file (plist-get package :bind))))
@@ -335,6 +344,9 @@ ELEMENT is the org element of the source block."
            (when-let ((package-name (wisdom-find-package))
                       (after (wisdom-find-after)))
              (put-package-parameter package-name :after `((:body ,after :line ,line))))
+           (when-let ((package-name (wisdom-find-package))
+                      (demand (wisdom-find-demand)))
+             (put-package-parameter package-name :demand `((:body ,demand :line ,line))))
            (when-let ((package-name (wisdom-find-package))
                       (straight (wisdom-find-straight)))
              (put-package-parameter package-name :straight `((:body ,straight :line ,line))))
@@ -554,5 +566,6 @@ All file contents will be aggregated and outputted to OUTPUT-FILE."
 ;; TODO Add :ignore to src blocks
 ;; TODO Allow multiple #+REMOTE: in a single org file
 ;; TODO Create a lock file for REMOTE dependencies
+;; TODO create wisdom-goto-output
 
 ;;; wisdom.el ends here
