@@ -15,6 +15,16 @@
 (defvar wisdom-compiling-remote nil
   "Whether we are compiling a remote file.")
 
+(defvar wisdom--booting nil
+  "Non-nil when running inside `wisdom-boot'.")
+
+(defvar wisdom--boot-phase :loading
+  "Internal boot phase for the splash screen.
+Possible values: :compiling or :loading.")
+
+(defvar wisdom--boot-errors '()
+  "List of compile / loading errors encountered during wisdom boot.")
+
 (defcustom wisdom-wrap-statements-in-condition t "Wrap code in condition statements."
   :type 'boolean
   :group 'wisdom)
@@ -217,15 +227,19 @@ FILE is the file name of the Org file."
      (if wisdom-wrap-statements-in-condition
          `(condition-case err
               ,expression
-            (error
-             (progn
-               (display-warning
-                'wisdom
-                (format "Error loading %s:%s - %s"
-                        ,(format "%s" file)
-                        ,line
-                        (error-message-string err))
-                :error))))
+              (error
+                 (add-to-list 'wisdom--boot-errors
+                              (list :file ,(format "%s" file)
+                                    :line ,line
+                                    :message (error-message-string err)))
+                 (unless wisdom--booting
+                   (display-warning
+                    'wisdom
+                    (format "Error loading %s:%s - %s"
+                            ,(format "%s" file)
+                            ,line
+                            (error-message-string err))
+                    :error))))
        expression))))
 
 (defun wisdom-merge-bodies (file xs)
@@ -460,25 +474,19 @@ The files are sorted by priority."
 (defun wisdom-compile-directory ()
   "Compile all Org files in `wisdom-org-directory' to Elisp.
 All files will be outputted to `wisdom-output-directory'."
-
-  (dolist (file (wisdom-get-files "^[^#]*\\.org$" (wisdom-get-org-directory)))
-    (when (wisdom-file-remote file)
-      (wisdom-pull-remote-file
-       (wisdom-file-remote file))))
-  ;; Compile remote files first
-  (let ((wisdom-compiling-remote t)
-        (compiled '()))
-    (dolist (file (wisdom-get-files "^[^#]*\\.org$" (wisdom-get-org-directory)))
-      (when-let ((output-file (wisdom-compile-file file)))
-        (push output-file compiled)))
-    compiled)
-
-  ;; Compile local files
-  (let ((wisdom-compiling-remote nil)
-        (compiled '()))
-    (dolist (file (wisdom-get-files "^[^#]*\\.org$" (wisdom-get-org-directory)))
-      (when-let ((output-file (wisdom-compile-file file)))
-        (push output-file compiled)))
+  (let* ((splash (when wisdom--booting (wisdom-show-splash)))
+         (files (wisdom-get-files "^[^#]*\\.org$" (wisdom-get-org-directory)))
+         (compiled '())
+         (current 0)
+         (total (length files)))
+    (dolist (file files)
+      (setq current (1+ current))
+      (when splash
+        (wisdom-splash-update-progress splash current total file))
+      (when (wisdom-file-remote file)
+        (wisdom-pull-remote-file (wisdom-file-remote file)))
+      (when-let ((output (wisdom-compile-file file)))
+        (push output compiled)))
     compiled))
 
 (defun wisdom-aggregate-directory (output-file)
@@ -499,12 +507,28 @@ All file contents will be aggregated and outputted to OUTPUT-FILE."
       (message "Wisdom: Failed to load %s" file))))
 
 (defun wisdom-load-directory ()
-  "Load all Elisp files in `wisdom-output-directory'. "
-  (let ((initial-gc-cons-threshold gc-cons-threshold))
+  (let* ((splash (when wisdom--booting (wisdom-show-splash)))
+         (initial-gc-cons-threshold gc-cons-threshold)
+         (files-local (wisdom-get-files "^[^#]*\\.el$"
+                                        (expand-file-name wisdom-output-directory)))
+         (files-remote (wisdom-get-files "^[^#]*\\.el$"
+                                         (expand-file-name wisdom-remote-output-directory)))
+         (files (append files-local files-remote))
+         (total (length files))
+         (current 0))
+
     (setq gc-cons-threshold (* 1024 1024 100))
-    (dolist (file (wisdom-get-files "^[^#]*\\.el$" (wisdom-get-output-directory)))
+
+    (dolist (file files)
+      (setq current (1+ current))
+      (when splash
+        (wisdom-splash-update-progress splash current total file))
       (wisdom-load-file file))
-    (setq gc-cons-threshold initial-gc-cons-threshold)))
+
+    (wisdom-splash-update-progress splash total total nil)
+
+    (setq gc-cons-threshold initial-gc-cons-threshold)
+    nil))
 
 (defun wisdom-reload ()
   "Compile and load all Org files."
@@ -558,6 +582,81 @@ All file contents will be aggregated and outputted to OUTPUT-FILE."
       (add-hook 'after-save-hook 'wisdom-preview nil t)
     (remove-hook 'after-save-hook 'wisdom-preview t)))
 
+(defun wisdom-show-splash ()
+  (let ((buf (get-buffer-create "*Wisdom Loading*")))
+    (with-current-buffer buf
+      (erase-buffer)
+      (org-mode))
+    (switch-to-buffer buf)
+    buf))
+
+(defun wisdom-splash-update (buf text)
+  (when (buffer-live-p buf)
+    (with-current-buffer buf
+      (goto-char (point-max))
+      (insert (format "%s\n" text))
+      (goto-char (point-max)))
+    (redisplay)))
+
+(defun wisdom-splash-update-progress (buf current total file)
+  (when (buffer-live-p buf)
+    (with-current-buffer buf
+      (let ((inhibit-read-only t)
+            (label (pcase wisdom--boot-phase
+                     (:compiling "Compiling")
+                     (:loading   "Loading")
+                     (_          "Processing"))))
+        (erase-buffer)
+        (insert "WISDOM")
+        (insert (make-string 10 ?\n))
+        (insert (format "[ %d / %d ]\n\n"
+                        current total))
+        (insert (wisdom-progress-bar-fancy current total 54))
+        (insert "\n\n")
+        (when file
+          (insert (format "%s: %s\n" label file)))
+        (center-region (point-min) (point-max))
+        (when wisdom--boot-errors
+          (insert "\nErrors encountered:\n\n"))
+        (dolist (e wisdom--boot-errors)
+          (insert (format "[[%s::%s][%s:%s]]\n"
+                          (plist-get e :file)
+                          (plist-get e :line)
+                          (plist-get e :file)
+                          (plist-get e :line)))
+          (insert (propertize (format " ⌞ %s\n" (plist-get e :message))
+                    'face 'error)))
+        (redisplay)))))
+
+(defun wisdom-progress-bar-fancy (current total width)
+  (let* ((ratio (/ (float current) total))
+         (done (floor (* ratio width)))
+         (todo (- width done)))
+    (format "┌%s┐\n│%s%s│\n└%s┘"
+            (make-string width ?─)
+            (make-string done ?█)
+            (make-string todo ?·)
+            (make-string width ?─))))
+
+(defun wisdom-progress-bar (current total width)
+  (let* ((ratio (/ (float current) total))
+         (done (floor (* ratio width)))
+         (todo (- width done)))
+    (format "[%s%s]"
+            (make-string done ?#)
+            (make-string todo ?.))))
+
+(defun wisdom-boot ()
+  "Compile and then load all Org files, showing a splash only here."
+  (interactive)
+  (let ((wisdom--booting t))
+    (setq wisdom--boot-errors '())
+    (let ((wisdom--boot-phase :compiling))
+      (wisdom-compile-directory))
+
+    (let ((wisdom--boot-phase :loading))
+      (wisdom-load-directory))))
+
 (provide 'wisdom)
 
 ;; TODO add try/catch to entire org files
@@ -569,3 +668,4 @@ All file contents will be aggregated and outputted to OUTPUT-FILE."
 ;; TODO create wisdom-goto-output
 
 ;;; wisdom.el ends here
+;; https://chatgpt.com/c/692ed38b-b4cc-832b-82e1-3c8786de57cf
