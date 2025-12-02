@@ -71,7 +71,7 @@ To use Wisdom, you need to set up your Emacs environment with `straight.el` for 
   (wisdom-remote-output-directory "~/.emacs.d/remote-wisdom")
   :config
   (wisdom-boot))
-#+END_SRC
+```
 
 This configuration:
 1. Installs `straight.el` for package management.
@@ -80,13 +80,13 @@ This configuration:
 4. Configures the directories for Org files and compiled outputs.
 5. Compiles and loads all Org files in the specified directory.
 
-** Usage
+## Usage
 
 Wisdom allows you to write your Emacs configuration in one or more Org files, using Org mode's structure to define `use-package` declarations and other Emacs Lisp code. Below is an example of how to structure an Org file for Wisdom.
 
-*** Example Org File
+### Example Org File
 
-#+BEGIN_SRC org
+```emacs-lisp
 #+TITLE: My Emacs Configuration
 #+PRIORITY: 5
 #+LEXICAL_BINDING: t
@@ -130,7 +130,7 @@ In this example:
 - A remote Org file is included using the `#+REMOTE` property.
 - General Emacs settings are defined in a separate source block.
 
-*** Compiling and Loading
+### Compiling and Loading
 
 To compile and load your configuration:
 1. Save your Org files in `wisdom-org-directory` (default: `~/.emacs.d/org`).
@@ -141,19 +141,19 @@ Alternatively, use `M-x wisdom-reload` to compile and load in one step.
 
 To compile and load the current Org file, use `M-x wisdom-reload-current-buffer`.
 
-*** Previewing Output
+### Previewing Output
 
 To preview the compiled Emacs Lisp output of the current Org file:
 1. Run `M-x wisdom-preview` to display the output in the `*wisdom preview*` buffer.
 2. Enable `wisdom-preview-mode` to automatically update the preview after saving the file.
 
-*** Managing Remote Files
+### Managing Remote Files
 
 To download remote Org files specified in `#+REMOTE` properties:
 - Run `M-x wisdom-download-all-remote-files` to fetch all remote files.
 - Wisdom caches remote files in `wisdom-remote-org-directory` and compiles them to `wisdom-remote-output-directory`.
 
-** Configuration Options
+## Configuration Options
 
 Wisdom provides several customizable variables to tailor its behavior. These can be set in your `init.el` or an Org file.
 
@@ -179,7 +179,7 @@ Wisdom provides several customizable variables to tailor its behavior. These can
    '("after" "straight" "config" "init" "bind" "bind_" "hook" "general" "custom")))
 #+END_SRC
 
-** Org File Properties
+## Org File Properties
 
 Wisdom supports the following Org file properties to control compilation and loading:
 
@@ -187,25 +187,25 @@ Wisdom supports the following Org file properties to control compilation and loa
 - `#+LEXICAL_BINDING: t|nil`: Enables or disables lexical binding (default: t).
 - `#+REMOTE: (:host <host> :repo <repo> :branch <branch> :file <file>)`: Specifies a remote Org file to include.
 
-** Debugging
+## Debugging
 
 Wisdom enhances debugging by:
 - Wrapping each source block in a `condition-case` form, which catches errors and displays the file name and line number.
 - Providing detailed warnings for syntax errors or invalid Emacs Lisp forms.
 - Allowing preview of the compiled output to inspect the generated Emacs Lisp code.
 
-** Contributing
+## Contributing
 
 Contributions to Wisdom are welcome! To contribute:
 1. Fork the repository at `https://github.com/kwrooijen/wisdom`.
 2. Create a new branch for your changes.
 3. Submit a pull request with your improvements.
 
-** License
+## License
 
 Wisdom is licensed under the MIT License. See the LICENSE file in the repository for details.
 
-** TODOs
+## TODOs
 
 The following features are planned for future releases:
 - Add try/catch wrapping for entire Org files.
