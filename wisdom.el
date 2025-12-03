@@ -227,19 +227,19 @@ FILE is the file name of the Org file."
      (if wisdom-wrap-statements-in-condition
          `(condition-case err
               ,expression
-              (error
-                 (add-to-list 'wisdom--boot-errors
-                              (list :file ,(format "%s" file)
-                                    :line ,line
-                                    :message (error-message-string err)))
-                 (unless wisdom--booting
-                   (display-warning
-                    'wisdom
-                    (format "Error loading %s:%s - %s"
-                            ,(format "%s" file)
-                            ,line
-                            (error-message-string err))
-                    :error))))
+            (error
+             (add-to-list 'wisdom--boot-errors
+                          (list :file ,(format "%s" file)
+                                :line ,line
+                                :message (error-message-string err)))
+             (unless wisdom--booting
+               (display-warning
+                'wisdom
+                (format "Error loading %s:%s - %s"
+                        ,(format "%s" file)
+                        ,line
+                        (error-message-string err))
+                :error))))
        expression))))
 
 (defun wisdom-merge-bodies (file xs)
@@ -613,8 +613,9 @@ All file contents will be aggregated and outputted to OUTPUT-FILE."
                         current total))
         (insert (wisdom-progress-bar-fancy current total 54))
         (insert "\n\n")
-        (when file
-          (insert (format "%s: %s\n" label file)))
+        (if file
+            (insert (format "%s: %s\n" label file))
+          (insert "\n"))
         (center-region (point-min) (point-max))
         (when wisdom--boot-errors
           (insert "\nErrors encountered:\n\n"))
@@ -625,7 +626,7 @@ All file contents will be aggregated and outputted to OUTPUT-FILE."
                           (plist-get e :file)
                           (plist-get e :line)))
           (insert (propertize (format " ⌞ %s\n" (plist-get e :message))
-                    'face 'error)))
+                              'face 'error)))
         (redisplay)))))
 
 (defun wisdom-progress-bar-fancy (current total width)
