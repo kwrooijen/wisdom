@@ -627,7 +627,9 @@ All file contents will be aggregated and outputted to OUTPUT-FILE."
                           (plist-get e :line)))
           (insert (propertize (format " ⌞ %s\n" (plist-get e :message))
                               'face 'error)))
-        (redisplay)))))
+        (redisplay)
+        (unless file
+          (org-mode))))))
 
 (defun wisdom-progress-bar-fancy (current total width)
   (let* ((ratio (/ (float current) total))
