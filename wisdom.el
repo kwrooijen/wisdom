@@ -1,5 +1,9 @@
 ;;; wisdom.el --- Managed Emacs configuration through org files
 
+;; Copyright (C) 2025  Kevin W. van Rooijen
+
+;; Author: Kevin W. van Rooijen
+
 ;;; Commentary:
 ;;
 
