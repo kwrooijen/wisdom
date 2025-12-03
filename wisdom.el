@@ -671,4 +671,3 @@ All file contents will be aggregated and outputted to OUTPUT-FILE."
 ;; TODO create wisdom-goto-output
 
 ;;; wisdom.el ends here
-;; https://chatgpt.com/c/692ed38b-b4cc-832b-82e1-3c8786de57cf
