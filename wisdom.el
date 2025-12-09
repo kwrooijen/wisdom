@@ -524,10 +524,25 @@ All file contents will be aggregated and outputted to OUTPUT-FILE."
     (setq gc-cons-threshold (* 1024 1024 100))
 
     (dolist (file files)
-      (setq current (1+ current))
-      (when splash
-        (wisdom-splash-update-progress splash current total file))
-      (wisdom-load-file file))
+      (condition-case err
+          (progn
+            (setq current (1+ current))
+            (when splash
+              (wisdom-splash-update-progress splash current total file))
+            (wisdom-load-file file))
+        (error
+         (add-to-list 'wisdom--boot-errors
+                      (list :file (format "%s" file)
+                            :line 1
+                            :message (error-message-string err)))
+         (unless wisdom--booting
+           (display-warning
+            'wisdom
+            (format "Error loading %s:%s - %s"
+                    (format "%s" file)
+                    1
+                    (error-message-string err))
+            :error)))))
 
     (wisdom-splash-update-progress splash total total nil)
 
@@ -666,7 +681,6 @@ All file contents will be aggregated and outputted to OUTPUT-FILE."
 
 (provide 'wisdom)
 
-;; TODO add try/catch to entire org files
 ;; TODO Add "push" to loading blocks / files so have an indicator that they're loaded.
 ;; TODO add #+DISABLED: t
 ;; TODO Add :ignore to src blocks
