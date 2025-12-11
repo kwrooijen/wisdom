@@ -3,8 +3,8 @@
 Wisdom is an Emacs package that provides a structured way to write
 Literate Emacs configuration in Org mode. Unlike traditional Org-based
 configurations, which are limited to a single file and a single src
-block per `use-package`, Wisdom supports multiple Org files, remote
-configurations, and first class `use-package` declarations.
+block per `use-package`, Wisdom supports multiple Org files, and first
+class `use-package` declarations.
 
 ![Example](https://raw.githubusercontent.com/kwrooijen/wisdom/refs/heads/master/example.png)
 
@@ -13,10 +13,9 @@ For real world examples: [Emacs.d](https://github.com/kwrooijen/emacs.d/tree/mas
 ## Features
 
 - Multi Org mode file configuration
-- use-package integration
+- use-package first class integration
 - Elisp file loading error handling
-- Load remote org files
-
+- Load remote Org files
 
 ## Installation
 
@@ -204,8 +203,8 @@ by priority, therefore the lowest number loads first
 
 Wisdom lets you to load external Org files, allowing you to create
 packages which can be easily distributed. Simply place the REMOTE
-attribute at the top of your org file with github properties. This
-feature is still experimental.
+attribute at the top of your org file with Github properties. This
+feature is still experimental and the design is likely to change.
 
 ```
 #+REMOTE: (:host github :repo kwrooijen/test-org :file test.org :branch master)
