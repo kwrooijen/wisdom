@@ -115,7 +115,9 @@ than the Org file."
 
 (defun wisdom-find-package ()
   "Find a `use-package' package in the current Org element or any ancestor element."
-  (wisdom-find-property :PACKAGE))
+  (or (wisdom-find-property :PACKAGE)
+      (wisdom-find-property :USE_PACKAGE)
+      (wisdom-find-property :USE-PACKAGE)))
 
 (defun wisdom-find-after ()
   "Find a `use-package' after in the current Org element or any ancestor element."
