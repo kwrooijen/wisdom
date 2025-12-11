@@ -264,6 +264,7 @@ XS is a list of `use-package' statements."
   "Build a `use-package' call for PACKAGE-NAME in string format.
 PACKAGE is the package plist.
 FILE is the file name of the Org file."
+  ;; TODO wrap in condition-case
   (concat (format "(use-package %s\n" package-name)
           (when-let ((straight (plist-get (car (plist-get package :straight)) :body)))
             (format ":straight %s\n" straight))
