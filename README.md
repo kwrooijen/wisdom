@@ -1,13 +1,10 @@
 # Wisdom
 
-Wisdom is an Emacs package that provides a structured and flexible way
-to manage your Emacs configuration using Org mode. By leveraging Org
-mode's hierarchical structure, Wisdom allows you to organize your
-Emacs Lisp configuration in a modular and readable format. Unlike
-traditional Org-based configurations, which are limited to a single
-file and a single src block per `use-package`, Wisdom supports
-multiple Org files, remote configurations, and `use-package`
-declarations.
+Wisdom is an Emacs package that provides a structured way to write
+Literate Emacs configuration in Org mode. Unlike traditional Org-based
+configurations, which are limited to a single file and a single src
+block per `use-package`, Wisdom supports multiple Org files, remote
+configurations, and first class `use-package` declarations.
 
 ![Example](https://raw.githubusercontent.com/kwrooijen/wisdom/refs/heads/master/example.png)
 
