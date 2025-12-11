@@ -73,6 +73,11 @@ than the Org file."
   :group 'wisdom)
 
 
+(defun wisdom-indent (string n)
+  "Indent STRING by N spaces."
+  (let ((indentation (make-string n ?\s)))
+    (replace-regexp-in-string "^" indentation string)))
+
 (defun wisdom-get-org-directory ()
   "Return the Org directory."
   (if wisdom-compiling-remote
@@ -228,25 +233,28 @@ If read fails, display a warning."
 FILE is the file name of the Org file."
   (let* ((body (plist-get part :body))
          (line (plist-get part :line))
-         (expression (wisdom-safe-read (format "(progn %s)" body) file line)))
-    (pp-to-string
-     (if wisdom-wrap-statements-in-condition
-         `(condition-case err
-              ,expression
-            (error
-             (add-to-list 'wisdom--boot-errors
-                          (list :file ,(format "%s" file)
-                                :line ,line
-                                :message (error-message-string err)))
-             (unless wisdom--booting
-               (display-warning
-                'wisdom
-                (format "Error loading %s:%s - %s"
-                        ,(format "%s" file)
-                        ,line
-                        (error-message-string err))
-                :error))))
-       expression))))
+         (expression-string (string-trim-right body))
+         (expression (wisdom-safe-read (format "(progn\n%s)" expression-string) file line)))
+    (if wisdom-wrap-statements-in-condition
+        (pp-to-string
+         (if wisdom-wrap-statements-in-condition
+             `(condition-case err
+                  ,expression
+                (error
+                 (add-to-list 'wisdom--boot-errors
+                              (list :file ,(format "%s" file)
+                                    :line ,line
+                                    :message (error-message-string err)))
+                 (unless wisdom--booting
+                   (display-warning
+                    'wisdom
+                    (format "Error loading %s:%s - %s"
+                            ,(format "%s" file)
+                            ,line
+                            (error-message-string err))
+                    :error))))
+           expression))
+      expression-string)))
 
 (defun wisdom-merge-bodies (file xs)
   "Merge the bodies of a list of `use-package' statements.
@@ -267,43 +275,44 @@ XS is a list of `use-package' statements."
 PACKAGE is the package plist.
 FILE is the file name of the Org file."
   ;; TODO wrap in condition-case
-  (concat (format "(use-package %s\n" package-name)
-          (when-let ((straight (plist-get (car (plist-get package :straight)) :body)))
-            (format ":straight %s\n" straight))
-          (when-let ((defer (plist-get (car (plist-get package :defer)) :body)))
-            (format ":defer %s\n" defer))
-          (when-let ((requires (plist-get (car (plist-get package :requires)) :body)))
-            (format ":requires %s\n" requires))
-          (when-let ((after (plist-get (car (plist-get package :after)) :body)))
-            (format ":after %s\n" after))
-          (when-let ((demand (plist-get (car (plist-get package :demand)) :body)))
-            (format ":demand %s\n" demand))
-          (when-let ((bind* (wisdom-merge-bodies file (plist-get package :bind*))))
-            (format ":bind* %s\n" bind*))
-          (when-let ((bind (wisdom-merge-bodies file (plist-get package :bind))))
-            (format ":bind %s\n" bind))
-          (when-let ((hook (wisdom-merge-bodies file (plist-get package :hook))))
-            (format ":hook %s\n" hook))
-          (when-let ((init (plist-get package :init)))
-            (format ":init %s\n" (string-join (mapcar (lambda (x) (wisdom-wrap-in-condition file x)) init))))
-          (when-let ((config (plist-get package :config)))
-            (format ":config %s\n" (string-join (mapcar (lambda (x) (wisdom-wrap-in-condition file x)) config))))
-          (when-let ((general (plist-get package :general)))
-            (format ":general %s\n" (string-join (mapcar (lambda (part) (plist-get part :body)) general))))
-          (when-let ((custom (plist-get package :custom)))
-            (format ":custom %s\n" (string-join (mapcar (lambda (part) (plist-get part :body)) custom))))
-
-          ")"))
+  (concat
+   (string-trim-right
+    (concat (format "(use-package %s" package-name)
+            (when-let* ((straight (plist-get (car (plist-get package :straight)) :body)))
+              (format "\n  :straight %s" straight))
+            (when-let* ((defer (plist-get (car (plist-get package :defer)) :body)))
+              (format "\n  :defer %s" defer))
+            (when-let* ((requires (plist-get (car (plist-get package :requires)) :body)))
+              (format "\n  :requires %s" requires))
+            (when-let* ((after (plist-get (car (plist-get package :after)) :body)))
+              (format "\n  :after %s" after))
+            (when-let* ((demand (plist-get (car (plist-get package :demand)) :body)))
+              (format "\n  :demand %s" demand))
+            (when-let* ((bind* (wisdom-merge-bodies file (plist-get package :bind*))))
+              (format "\n  :bind*\n%s" (wisdom-indent bind* 2)))
+            (when-let* ((bind (wisdom-merge-bodies file (plist-get package :bind))))
+              (format "\n  :bind\n%s" (wisdom-indent bind 2)))
+            (when-let* ((hook (wisdom-merge-bodies file (plist-get package :hook))))
+              (format "\n  :hook\n%s" (wisdom-indent hook 2)))
+            (when-let* ((init (plist-get package :init)))
+              (format "\n  :init\n%s" (wisdom-indent (string-join (mapcar (lambda (x) (wisdom-wrap-in-condition file x)) init)  "\n") 2)))
+            (when-let* ((config (plist-get package :config)))
+              (format "\n  :config\n%s" (wisdom-indent (string-join (mapcar (lambda (x) (wisdom-wrap-in-condition file x)) config) "\n") 2)))
+            (when-let* ((general (plist-get package :general)))
+              (format "\n  :general\n%s" (wisdom-indent (string-join (mapcar (lambda (part) (plist-get part :body)) general) "\n") 2)))
+            (when-let* ((custom (plist-get package :custom)))
+              (format "\n  :custom\n%s" (wisdom-indent (string-join (mapcar (lambda (part) (plist-get part :body)) custom) "\n") 2)))))
+   ")\n\n"))
 
 (defun wisdom-build-package (file package-name)
   "Build a `use-package' call for PACKAGE-NAME in string format.
 FILE is the file name of the Org file.
 PACKAGE-NAME is the name of the package."
-  (when-let ((package (plist-get wisdom-packages package-name)))
+  (when-let* ((package (plist-get wisdom-packages package-name)))
     (when (not (equal package-name (intern "nil")))
       (let ((package-string (wisdom-build-package-string package-name package file)))
-        (pp-to-string
-         (wisdom-safe-read package-string file))))))
+        (when (wisdom-safe-read package-string file)
+          package-string)))))
 
 (defun wisdom-plist-keys (plist)
   "Return the keys of PLIST as a list."
