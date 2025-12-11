@@ -123,40 +123,40 @@ than the Org file."
   "Find a `use-package' after in the current Org element or any ancestor element."
   ;; Properties are symbols. Meaning (evil) is also a
   ;; symbol. Therefore we need to convert it to a string and read it.
-  (when-let ((after (wisdom-find-property :AFTER)))
+  (when-let* ((after (wisdom-find-property :AFTER)))
     (prin1-to-string (read (symbol-name after)))))
 
 (defun wisdom-find-demand ()
   "Find a `use-package' demand in the current Org element or any ancestor element."
   ;; Properties are symbols. Meaning (evil) is also a
   ;; symbol. Therefore we need to convert it to a string and read it.
-  (when-let ((demand (wisdom-find-property :DEMAND)))
+  (when-let* ((demand (wisdom-find-property :DEMAND)))
     (prin1-to-string (read (symbol-name demand)))))
 
 (defun wisdom-find-straight ()
   "Find a `use-package' straight in the current Org element or any ancestor element."
   ;; Properties are symbols. Meaning (evil) is also a
   ;; symbol. Therefore we need to convert it to a string and read it.
-  (when-let ((straight (wisdom-find-property :STRAIGHT)))
+  (when-let* ((straight (wisdom-find-property :STRAIGHT)))
     (prin1-to-string (read (symbol-name straight)))))
 
 (defun wisdom-find-defer ()
   "Find a `use-package' defer in the current Org element or any ancestor element."
   ;; Properties are symbols. Meaning (evil) is also a
   ;; symbol. Therefore we need to convert it to a string and read it.
-  (when-let ((defer (wisdom-find-property :DEFER)))
+  (when-let* ((defer (wisdom-find-property :DEFER)))
     (prin1-to-string (read (symbol-name defer)))))
 
 (defun wisdom-find-requires ()
   "Find a `use-package' straight in the current Org element or any ancestor element."
   ;; Properties are symbols. Meaning (evil) is also a
   ;; symbol. Therefore we need to convert it to a string and read it.
-  (when-let ((requires (wisdom-find-property :REQUIRES)))
+  (when-let* ((requires (wisdom-find-property :REQUIRES)))
     (prin1-to-string (read (symbol-name requires)))))
 
 (defun wisdom-find-keyword ()
   "Find a `use-package' keyword in the current Org element or any ancestor element."
-  (when-let ((keyword (wisdom-find-property :KEYWORD)))
+  (when-let* ((keyword (wisdom-find-property :KEYWORD)))
     (replace-regexp-in-string "^:" "" (symbol-name keyword))))
 
 (defun wisdom-file-properties (file)
@@ -198,7 +198,7 @@ If no lexical-binding is set, return t."
 (defun wisdom-get-use-package-package ()
   "Return the package name and parameter of a `use-package' call.
 Specified in the org babel header arguments PARAMS."
-  (when-let ((package (wisdom-find-package))
+  (when-let* ((package (wisdom-find-package))
              (keyword (or (wisdom-find-keyword)
                           (wisdom-find-tag))))
     (list package keyword)))
@@ -359,30 +359,30 @@ ELEMENT is the org element of the source block."
       (org-map-entries
        (lambda ()
          (let ((line (line-number-at-pos (org-element-property :begin (org-element-context)))))
-           (when-let ((package-name (wisdom-find-package))
-                      (package (org-element-property :PACKAGE (org-element-context))))
+           (when-let* ((package-name (wisdom-find-package))
+                       (package (org-element-property :PACKAGE (org-element-context))))
              (put-package-parameter package-name :package line))
-           (when-let ((package-name (wisdom-find-package))
-                      (after (wisdom-find-after)))
+           (when-let* ((package-name (wisdom-find-package))
+                       (after (wisdom-find-after)))
              (put-package-parameter package-name :after `((:body ,after :line ,line))))
-           (when-let ((package-name (wisdom-find-package))
-                      (demand (wisdom-find-demand)))
+           (when-let* ((package-name (wisdom-find-package))
+                       (demand (wisdom-find-demand)))
              (put-package-parameter package-name :demand `((:body ,demand :line ,line))))
-           (when-let ((package-name (wisdom-find-package))
-                      (straight (wisdom-find-straight)))
+           (when-let* ((package-name (wisdom-find-package))
+                       (straight (wisdom-find-straight)))
              (put-package-parameter package-name :straight `((:body ,straight :line ,line))))
-           (when-let ((package-name (wisdom-find-package))
-                      (defer (wisdom-find-defer)))
+           (when-let* ((package-name (wisdom-find-package))
+                       (defer (wisdom-find-defer)))
              (put-package-parameter package-name :defer `((:body ,defer :line ,line))))
-           (when-let ((package-name (wisdom-find-package))
-                      (requires (wisdom-find-requires)))
+           (when-let* ((package-name (wisdom-find-package))
+                       (requires (wisdom-find-requires)))
              (put-package-parameter package-name :requires `((:body ,requires :line ,line)))))))
       (org-babel-map-src-blocks nil
         (let ((body (org-element-property :value (org-element-context)))
               (line (line-number-at-pos (org-element-property :begin (org-element-context))))
               (language (org-element-property :language (org-element-context))))
           (when (string= language "emacs-lisp")
-            (if-let ((package (wisdom-get-use-package-package)))
+            (if-let* ((package (wisdom-get-use-package-package)))
                 (wisdom-add-package package body (org-element-context))
               (when (stringp body)
                 (push (wisdom-wrap-in-condition file `(:body ,body :line ,line))
@@ -492,7 +492,7 @@ All files will be outputted to `wisdom-output-directory'."
         (wisdom-splash-update-progress splash current total file))
       (when (wisdom-file-remote file)
         (wisdom-pull-remote-file (wisdom-file-remote file)))
-      (when-let ((output (wisdom-compile-file file)))
+      (when-let* ((output (wisdom-compile-file file)))
         (push output compiled)))
     compiled))
 
@@ -567,7 +567,7 @@ All file contents will be aggregated and outputted to OUTPUT-FILE."
       (wisdom-pull-remote-file remote-file-plist)
       (let ((wisdom-compiling-remote t))
         (wisdom-compile-file (wisdom-remote-plist-to-org-file remote-file-plist))))
-    (when-let ((compiled-file (wisdom-compile-file (buffer-file-name (current-buffer)))))
+    (when-let* ((compiled-file (wisdom-compile-file (buffer-file-name (current-buffer)))))
       (wisdom-load-file compiled-file))))
 
 (defun wisdom-download-all-remote-files ()
@@ -575,7 +575,7 @@ All file contents will be aggregated and outputted to OUTPUT-FILE."
   (interactive)
   (let ((wisdom-force-download t))
     (dolist (file (wisdom-get-files "^[^#]*\\.org$" (wisdom-get-org-directory)))
-      (when-let ((remote-file-plist (wisdom-file-remote file)))
+      (when-let* ((remote-file-plist (wisdom-file-remote file)))
         (wisdom-pull-remote-file remote-file-plist)))))
 
 (defun wisdom-preview ()
