@@ -11,7 +11,7 @@ class `use-package` declarations.
 For real world examples: [Emacs.d](https://github.com/kwrooijen/emacs.d/tree/master/org)
 
 ## Demo video
-[![Demo Video](https://img.youtube.com/vi/0Tf1DHdyrbc/0.jpg)](https://www.youtube.com/watch?v=0Tf1DHdyrbc)
+[![Demo Video](https://img.youtube.com/vi/0Tf1DHdyrbc/maxresdefault.jpg)](https://www.youtube.com/watch?v=0Tf1DHdyrbc)
 
 
 ## Features
