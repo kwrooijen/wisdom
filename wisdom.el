@@ -277,6 +277,16 @@ FILE is the file name of the Org file."
   ;; TODO wrap in condition-case
   (concat
    (string-trim-right
+    ;; TODO use canonical order
+    ;; :disabled / :if / :when
+    ;; :preface
+    ;; :after
+    ;; :commands
+    ;; :bind / :general
+    ;; :hook
+    ;; :init
+    ;; :custom
+    ;; :config
     (concat (format "(use-package %s" package-name)
             (when-let* ((straight (plist-get (car (plist-get package :straight)) :body)))
               (format "\n  :straight %s" straight))
@@ -699,5 +709,17 @@ All file contents will be aggregated and outputted to OUTPUT-FILE."
 ;; TODO Allow multiple #+REMOTE: in a single org file
 ;; TODO Create a lock file for REMOTE dependencies
 ;; TODO create wisdom-goto-output
+;; TODO Conditional inclusion (machine-specific configs, OS-specific blocks, etc.) (#+SYSTEM_TYPE: gnu/linux, darwin)
+;;      gnu          compiled for a GNU Hurd system.
+;;      gnu/linux    compiled for a GNU/Linux system.
+;;      gnu/kfreebsd compiled for a GNU system with a FreeBSD kernel.
+;;      darwin       compiled for Darwin (GNU-Darwin, macOS, ...).
+;;      ms-dos       compiled as an MS-DOS application.
+;;      windows-nt   compiled as a native W32 application.
+;;      cygwin       compiled using the Cygwin library.
+;;      haiku        compiled for a Haiku system.
+;;      android      compiled for Android.
+;; TODO Store entire (backtrace) on error?
+
 
 ;;; wisdom.el ends here
