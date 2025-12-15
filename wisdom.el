@@ -41,22 +41,22 @@ underscore, it will be replaced with a asterisk."
   :type 'list
   :group 'wisdom)
 
-(defcustom wisdom-output-directory "~/.emacs.d/wisdom"
+(defcustom wisdom-output-directory (expand-file-name "wisdom" user-emacs-directory)
   "Directory where the tangled Elisp files are stored."
   :type 'string
   :group 'wisdom)
 
-(defcustom wisdom-org-directory "~/.emacs.d/org"
+(defcustom wisdom-org-directory (expand-file-name "org" user-emacs-directory)
   "Directory where the Org files are stored."
   :type 'string
   :group 'wisdom)
 
-(defcustom wisdom-remote-output-directory "~/.emacs.d/remote-wisdom"
+(defcustom wisdom-remote-output-directory (expand-file-name "remote-wisdom" user-emacs-directory)
   "Directory where the remote tangled Elisp files are stored."
   :type 'string
   :group 'wisdom)
 
-(defcustom wisdom-remote-org-directory "~/.emacs.d/remote-org"
+(defcustom wisdom-remote-org-directory (expand-file-name "remote-org" user-emacs-directory)
   "Directory where the remote Org files are stored."
   :type 'string
   :group 'wisdom)
