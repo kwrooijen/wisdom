@@ -10,8 +10,6 @@
 (require 'cl-lib)
 (require 'ob-core)
 (require 'url)
-;; TODO This doesn't need to be required when using Leaf
-(require 'use-package-core)
 
 ;;; Code:
 
@@ -30,6 +28,11 @@ Possible values: :compiling or :loading.")
 
 (defvar wisdom--boot-errors '()
   "List of compile / loading errors encountered during wisdom boot.")
+
+(defcustom wisdom-package-method 'use-package
+  "Method to use for package management."
+  :type '(choice (const :tag "use-package" use-package)
+                 (const :tag "leaf" leaf)))
 
 (defcustom wisdom-wrap-statements-in-condition t "Wrap code in condition statements."
   :type 'boolean
@@ -79,10 +82,20 @@ than the Org file."
   :group 'wisdom)
 
 (defun wisdom-package-keywords ()
-  ;; TODO add Leaf support
-  ;; (leaf-available-keywords)
+  "Return the list of available package keywords based on `wisdom-package-method'."
   (cl-remove-duplicates
-   (append use-package-keywords wisdom-package-keywords-extra)))
+   (append
+    (pcase wisdom-package-method
+      ('leaf
+       (when (and (require 'leaf nil t)
+                  (fboundp 'leaf-available-keywords))
+         (leaf-available-keywords)))
+      ('use-package
+        (when (and (require 'use-package-core nil t)
+                   (boundp 'use-package-keywords))
+           use-package-keywords))
+      (_ '()))
+    wisdom-package-keywords-extra)))
 
 (defun wisdom-indent (string n)
   "Indent STRING by N spaces."
@@ -122,7 +135,8 @@ than the Org file."
       (error nil))))
 
 (defun wisdom-find-tag ()
-  "Find a `use-package' tag in the current Org element or any ancestor element."
+  "Find a package keyword tag in the current Org element or any ancestor element.
+Works with both `use-package' and `leaf' keywords."
   (let* ((keywords (wisdom-package-keywords))
          (tag (car (seq-filter (lambda (tag) (member
                                               (intern (concat ":" tag))
@@ -133,10 +147,12 @@ than the Org file."
                                 (replace-regexp-in-string "_$" "*" tag)))))
 
 (defun wisdom-find-package ()
-  "Find a `use-package' package in the current Org element or any ancestor element."
+  "Find a package name in the current Org element or any ancestor element.
+Supports :PACKAGE, :USE_PACKAGE, :USE-PACKAGE, and :LEAF properties."
   (or (wisdom-find-property :PACKAGE)
       (wisdom-find-property :USE_PACKAGE)
-      (wisdom-find-property :USE-PACKAGE)))
+      (wisdom-find-property :USE-PACKAGE)
+      (wisdom-find-property :LEAF)))
 
 (defun wisdom-find-property-string (key)
   (when-let* ((property-key (or (wisdom-find-property (intern (downcase (format "%s" key))))
@@ -144,7 +160,8 @@ than the Org file."
     (prin1-to-string (read (symbol-name property-key)))))
 
 (defun wisdom-find-keyword ()
-  "Find a `use-package' keyword in the current Org element or any ancestor element."
+  "Find a package keyword in the current Org element or any ancestor element.
+Works with both `use-package' and `leaf' keywords."
   (when-let* ((keyword (wisdom-find-property :KEYWORD)))
     (replace-regexp-in-string "^:" "" (symbol-name keyword))))
 
@@ -183,7 +200,8 @@ If no lexical-binding is set, return t."
       t)))
 
 (defun wisdom-get-use-package-package ()
-  "Return the package name and parameter of a `use-package' call.
+  "Return the package name and parameter for a package declaration.
+Works with both `use-package' and `leaf'.
 Specified in the org babel header arguments PARAMS."
   (when-let* ((package (wisdom-find-package))
               (keyword (or (wisdom-find-keyword)
@@ -239,9 +257,10 @@ FILE is the file name of the Org file."
       expression-string)))
 
 (defun wisdom-merge-bodies (file xs)
-  "Merge the bodies of a list of `use-package' statements.
+  "Merge the bodies of a list of package declaration statements.
+Works with both `use-package' and `leaf'.
 FILE is the file name of the Org file.
-XS is a list of `use-package' statements."
+XS is a list of package declaration statements."
   (let ((result '()))
     (dolist (x xs)
       (let* ((body (plist-get x :body))
@@ -253,32 +272,37 @@ XS is a list of `use-package' statements."
       (prin1-to-string result))))
 
 (defun wisdom-build-package-string (package-name package file)
-  "Build a `use-package' call for PACKAGE-NAME in string format.
+  "Build a package declaration call for PACKAGE-NAME in string format.
 PACKAGE is the package plist.
-FILE is the file name of the Org file."
-  ;; TODO wrap in condition-case
-  (concat
-   (string-trim-right
-    (concat (format "(use-package %s" package-name)
-            (let ((keys (wisdom-package-keywords)))
-              (mapconcat
-               (lambda (key)
-                 (when-let* ((entry (plist-get package key)))
-                   (format "\n  %s\n%s" key
-                           (wisdom-indent
-                            (string-join (mapcar (lambda (part)
-                                                   (if (member key wisdom-condition-case-keywords)
-                                                       (wisdom-wrap-in-condition file part)
-                                                     (plist-get part :body)))
-                                                 entry)
-                                         "\n")
-                            2))))
-               keys
-               ""))
-            ")\n\n"))))
+FILE is the file name of the Org file.
+Uses either `use-package' or `leaf' based on `wisdom-package-method'."
+  (let ((package-macro (pcase wisdom-package-method
+                         ('leaf "leaf")
+                         ('use-package "use-package")
+                         (_ "use-package"))))
+    (concat
+     (string-trim-right
+      (concat (format "(%s %s" package-macro package-name)
+              (let ((keys (wisdom-package-keywords)))
+                (mapconcat
+                 (lambda (key)
+                   (when-let* ((entry (plist-get package key)))
+                     (format "\n  %s\n%s" key
+                             (wisdom-indent
+                              (string-join (mapcar (lambda (part)
+                                                     (if (member key wisdom-condition-case-keywords)
+                                                         (wisdom-wrap-in-condition file part)
+                                                       (plist-get part :body)))
+                                                   entry)
+                                           "\n")
+                              2))))
+                 keys
+                 ""))
+              ")\n\n")))))
 
 (defun wisdom-build-package (file package-name)
-  "Build a `use-package' call for PACKAGE-NAME in string format.
+  "Build a package declaration call for PACKAGE-NAME in string format.
+Uses either `use-package' or `leaf' based on `wisdom-package-method'.
 FILE is the file name of the Org file.
 PACKAGE-NAME is the name of the package."
   (when-let* ((package (plist-get wisdom-packages package-name)))
@@ -296,8 +320,9 @@ PACKAGE-NAME is the name of the package."
     (nreverse keys)))
 
 (defun wisdom-build-packages (file)
-  "Build a string of `use-package' statements.
-The resulting contains all all packages in `wisdom-packages'.
+  "Build a string of package declaration statements.
+Uses either `use-package' or `leaf' based on `wisdom-package-method'.
+The result contains all packages in `wisdom-packages'.
 FILE is the file name of the Org file."
   (let ((package-names (wisdom-plist-keys wisdom-packages))
         (result ""))
@@ -319,7 +344,8 @@ VALUE is the value to set."
                     value))))
 
 (defun wisdom-add-package (package body element)
-  "Execute a block of Use-Package code with org-babel.
+  "Execute a block of package declaration code with org-babel.
+Works with both `use-package' and `leaf'.
 PACKAGE is a list of the package name and parameter.
 BODY is the body of the source block.
 ELEMENT is the org element of the source block."
