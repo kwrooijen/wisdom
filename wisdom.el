@@ -10,6 +10,8 @@
 (require 'cl-lib)
 (require 'ob-core)
 (require 'url)
+;; TODO This doesn't need to be required when using Leaf
+(require 'use-package-core)
 
 ;;; Code:
 
@@ -33,11 +35,15 @@ Possible values: :compiling or :loading.")
   :type 'boolean
   :group 'wisdom)
 
-(defcustom wisdom-use-package-keywords
-  '("after" "demand" "straight" "config" "init" "bind" "bind_" "hook" "general" "custom")
-  "List of `use-package' keywords that can be used.
-The keywords are case sensitive. If the tag ends with an
-underscore, it will be replaced with a asterisk."
+(defcustom wisdom-package-keywords-extra
+  '(:straight
+    ;; General
+    :general :ghook :gfhook :general-config)
+  "List of extra `use-package' / `leaf' keywords that can be used.")
+
+(defcustom wisdom-condition-case-keywords
+  '(:config :init)
+  "List of `use-package' / `leaf' keywords that should be wrapped in condition-case."
   :type 'list
   :group 'wisdom)
 
@@ -72,6 +78,11 @@ than the Org file."
   :type 'boolean
   :group 'wisdom)
 
+(defun wisdom-package-keywords ()
+  ;; TODO add Leaf support
+  ;; (leaf-available-keywords)
+  (cl-remove-duplicates
+   (append use-package-keywords wisdom-package-keywords-extra)))
 
 (defun wisdom-indent (string n)
   "Indent STRING by N spaces."
@@ -112,8 +123,11 @@ than the Org file."
 
 (defun wisdom-find-tag ()
   "Find a `use-package' tag in the current Org element or any ancestor element."
-  (let* ((keywords wisdom-use-package-keywords)
-         (tag (car (seq-filter (lambda (tag) (member tag keywords)) (wisdom-find-tags)))))
+  (let* ((keywords (wisdom-package-keywords))
+         (tag (car (seq-filter (lambda (tag) (member
+                                              (intern (concat ":" tag))
+                                              keywords))
+                               (wisdom-find-tags)))))
     (when tag
       (replace-regexp-in-string "_" "-"
                                 (replace-regexp-in-string "_$" "*" tag)))))
@@ -124,40 +138,10 @@ than the Org file."
       (wisdom-find-property :USE_PACKAGE)
       (wisdom-find-property :USE-PACKAGE)))
 
-(defun wisdom-find-after ()
-  "Find a `use-package' after in the current Org element or any ancestor element."
-  ;; Properties are symbols. Meaning (evil) is also a
-  ;; symbol. Therefore we need to convert it to a string and read it.
-  (when-let* ((after (wisdom-find-property :AFTER)))
-    (prin1-to-string (read (symbol-name after)))))
-
-(defun wisdom-find-demand ()
-  "Find a `use-package' demand in the current Org element or any ancestor element."
-  ;; Properties are symbols. Meaning (evil) is also a
-  ;; symbol. Therefore we need to convert it to a string and read it.
-  (when-let* ((demand (wisdom-find-property :DEMAND)))
-    (prin1-to-string (read (symbol-name demand)))))
-
-(defun wisdom-find-straight ()
-  "Find a `use-package' straight in the current Org element or any ancestor element."
-  ;; Properties are symbols. Meaning (evil) is also a
-  ;; symbol. Therefore we need to convert it to a string and read it.
-  (when-let* ((straight (wisdom-find-property :STRAIGHT)))
-    (prin1-to-string (read (symbol-name straight)))))
-
-(defun wisdom-find-defer ()
-  "Find a `use-package' defer in the current Org element or any ancestor element."
-  ;; Properties are symbols. Meaning (evil) is also a
-  ;; symbol. Therefore we need to convert it to a string and read it.
-  (when-let* ((defer (wisdom-find-property :DEFER)))
-    (prin1-to-string (read (symbol-name defer)))))
-
-(defun wisdom-find-requires ()
-  "Find a `use-package' straight in the current Org element or any ancestor element."
-  ;; Properties are symbols. Meaning (evil) is also a
-  ;; symbol. Therefore we need to convert it to a string and read it.
-  (when-let* ((requires (wisdom-find-property :REQUIRES)))
-    (prin1-to-string (read (symbol-name requires)))))
+(defun wisdom-find-property-string (key)
+  (when-let* ((property-key (or (wisdom-find-property (intern (downcase (format "%s" key))))
+                                (wisdom-find-property (intern (upcase (format "%s" key)))))))
+    (prin1-to-string (read (symbol-name property-key)))))
 
 (defun wisdom-find-keyword ()
   "Find a `use-package' keyword in the current Org element or any ancestor element."
@@ -187,10 +171,8 @@ If no priority is set, return 10."
 
 (defun wisdom-file-remote (file)
   "Return the remote property of an org FILE."
-  (let ((remote (alist-get 'remote (wisdom-file-properties file))))
-    ;; Read string as elisp list
-    (when remote
-      (read remote))))
+  (when-let* ((remote (alist-get 'remote (wisdom-file-properties file))))
+    (read remote)))
 
 (defun wisdom-file-lexical-binding (file)
   "Return the lexical-binding of an org FILE.
@@ -204,8 +186,8 @@ If no lexical-binding is set, return t."
   "Return the package name and parameter of a `use-package' call.
 Specified in the org babel header arguments PARAMS."
   (when-let* ((package (wisdom-find-package))
-             (keyword (or (wisdom-find-keyword)
-                          (wisdom-find-tag))))
+              (keyword (or (wisdom-find-keyword)
+                           (wisdom-find-tag))))
     (list package keyword)))
 
 (defun wisdom-safe-read (string file &optional line)
@@ -277,42 +259,23 @@ FILE is the file name of the Org file."
   ;; TODO wrap in condition-case
   (concat
    (string-trim-right
-    ;; TODO use canonical order
-    ;; :disabled / :if / :when
-    ;; :preface
-    ;; :after
-    ;; :commands
-    ;; :bind / :general
-    ;; :hook
-    ;; :init
-    ;; :custom
-    ;; :config
     (concat (format "(use-package %s" package-name)
-            (when-let* ((straight (plist-get (car (plist-get package :straight)) :body)))
-              (format "\n  :straight %s" straight))
-            (when-let* ((defer (plist-get (car (plist-get package :defer)) :body)))
-              (format "\n  :defer %s" defer))
-            (when-let* ((requires (plist-get (car (plist-get package :requires)) :body)))
-              (format "\n  :requires %s" requires))
-            (when-let* ((after (plist-get (car (plist-get package :after)) :body)))
-              (format "\n  :after %s" after))
-            (when-let* ((demand (plist-get (car (plist-get package :demand)) :body)))
-              (format "\n  :demand %s" demand))
-            (when-let* ((bind* (wisdom-merge-bodies file (plist-get package :bind*))))
-              (format "\n  :bind*\n%s" (wisdom-indent bind* 2)))
-            (when-let* ((bind (wisdom-merge-bodies file (plist-get package :bind))))
-              (format "\n  :bind\n%s" (wisdom-indent bind 2)))
-            (when-let* ((hook (wisdom-merge-bodies file (plist-get package :hook))))
-              (format "\n  :hook\n%s" (wisdom-indent hook 2)))
-            (when-let* ((init (plist-get package :init)))
-              (format "\n  :init\n%s" (wisdom-indent (string-join (mapcar (lambda (x) (wisdom-wrap-in-condition file x)) init)  "\n") 2)))
-            (when-let* ((config (plist-get package :config)))
-              (format "\n  :config\n%s" (wisdom-indent (string-join (mapcar (lambda (x) (wisdom-wrap-in-condition file x)) config) "\n") 2)))
-            (when-let* ((general (plist-get package :general)))
-              (format "\n  :general\n%s" (wisdom-indent (string-join (mapcar (lambda (part) (plist-get part :body)) general) "\n") 2)))
-            (when-let* ((custom (plist-get package :custom)))
-              (format "\n  :custom\n%s" (wisdom-indent (string-join (mapcar (lambda (part) (plist-get part :body)) custom) "\n") 2)))))
-   ")\n\n"))
+            (let ((keys (wisdom-package-keywords)))
+              (mapconcat
+               (lambda (key)
+                 (when-let* ((entry (plist-get package key)))
+                   (format "\n  %s\n%s" key
+                           (wisdom-indent
+                            (string-join (mapcar (lambda (part)
+                                                   (if (member key wisdom-condition-case-keywords)
+                                                       (wisdom-wrap-in-condition file part)
+                                                     (plist-get part :body)))
+                                                 entry)
+                                         "\n")
+                            2))))
+               keys
+               ""))
+            ")\n\n"))))
 
 (defun wisdom-build-package (file package-name)
   "Build a `use-package' call for PACKAGE-NAME in string format.
@@ -378,24 +341,12 @@ ELEMENT is the org element of the source block."
       (org-map-entries
        (lambda ()
          (let ((line (line-number-at-pos (org-element-property :begin (org-element-context)))))
-           (when-let* ((package-name (wisdom-find-package))
-                       (package (org-element-property :PACKAGE (org-element-context))))
-             (put-package-parameter package-name :package line))
-           (when-let* ((package-name (wisdom-find-package))
-                       (after (wisdom-find-after)))
-             (put-package-parameter package-name :after `((:body ,after :line ,line))))
-           (when-let* ((package-name (wisdom-find-package))
-                       (demand (wisdom-find-demand)))
-             (put-package-parameter package-name :demand `((:body ,demand :line ,line))))
-           (when-let* ((package-name (wisdom-find-package))
-                       (straight (wisdom-find-straight)))
-             (put-package-parameter package-name :straight `((:body ,straight :line ,line))))
-           (when-let* ((package-name (wisdom-find-package))
-                       (defer (wisdom-find-defer)))
-             (put-package-parameter package-name :defer `((:body ,defer :line ,line))))
-           (when-let* ((package-name (wisdom-find-package))
-                       (requires (wisdom-find-requires)))
-             (put-package-parameter package-name :requires `((:body ,requires :line ,line)))))))
+           (dolist (key (wisdom-package-keywords))
+             (let ((package-name (wisdom-find-package)))
+               (when-let* ((package (org-element-property :PACKAGE (org-element-context))))
+                 (put-package-parameter package-name :package line))
+               (when-let* ((body (wisdom-find-property-string key)))
+                 (put-package-parameter package-name key `((:body ,body :line ,line)))))))))
       (org-babel-map-src-blocks nil
         (let ((body (org-element-property :value (org-element-context)))
               (line (line-number-at-pos (org-element-property :begin (org-element-context))))
@@ -703,6 +654,7 @@ All file contents will be aggregated and outputted to OUTPUT-FILE."
 
 (provide 'wisdom)
 
+;; TODO Comments such a ;; ( or ;; ) seem to break parsing
 ;; TODO Add "push" to loading blocks / files so have an indicator that they're loaded.
 ;; TODO add #+DISABLED: t
 ;; TODO Add :ignore to src blocks
