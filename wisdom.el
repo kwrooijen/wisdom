@@ -32,6 +32,7 @@ Possible values: :compiling or :loading.")
 (defcustom wisdom-package-method 'use-package
   "Method to use for package management."
   :type '(choice (const :tag "use-package" use-package)
+                 (const :tag "use-package!" use-package!)
                  (const :tag "leaf" leaf)))
 
 (defcustom wisdom-wrap-statements-in-condition t "Wrap code in condition statements."
@@ -90,7 +91,7 @@ than the Org file."
        (when (and (require 'leaf nil t)
                   (fboundp 'leaf-available-keywords))
          (leaf-available-keywords)))
-      ('use-package
+      ((or 'use-package 'use-package!)
         (when (and (require 'use-package-core nil t)
                    (boundp 'use-package-keywords))
            use-package-keywords))
@@ -278,6 +279,7 @@ FILE is the file name of the Org file.
 Uses either `use-package' or `leaf' based on `wisdom-package-method'."
   (let ((package-macro (pcase wisdom-package-method
                          ('leaf "leaf")
+                         ('use-package! "use-package!")
                          ('use-package "use-package")
                          (_ "use-package"))))
     (concat

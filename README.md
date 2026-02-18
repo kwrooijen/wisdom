@@ -61,6 +61,42 @@ get started.
   (wisdom-boot))
 ```
 
+## Doom Emacs
+
+Doom Emacs uses `use-package!` instead of `use-package`. To use
+Wisdom with Doom, set `wisdom-package-method` to `'use-package!` in
+your `config.el`:
+
+```emacs-lisp
+(use-package! wisdom
+  :custom
+  (wisdom-package-method 'use-package!)
+  (wisdom-org-directory "~/.doom.d/org")
+  (wisdom-output-directory "~/.doom.d/wisdom")
+  :config
+  (wisdom-boot))
+```
+
+With this setting, Wisdom will generate `use-package!` calls instead
+of `use-package`. Place your Org files in `~/.doom.d/org/` and Wisdom
+will compile them to `~/.doom.d/wisdom/`. For example, this Org
+configuration:
+
+```org
+* Lispy
+:PROPERTIES:
+:PACKAGE: lispy
+:AFTER: evil-collection
+:END:
+```
+
+Compiles down to:
+
+```emacs-lisp
+(use-package! lispy
+  :after evil-collection)
+```
+
 ## Usage
 
 When developing your org files, use `wisdom-preview` and
